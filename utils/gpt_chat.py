@@ -5,25 +5,38 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def chat_with_gpt(message: str, lang: str = "en", persona: str = "astrologer"):
-    system_prompt = {
+# In-memory session storage (use Redis/db in production)
+chat_sessions = {}
+
+def chat_with_gpt(message: str, session_id: str, lang: str = "en", persona: str = "astrologer"):
+    if session_id not in chat_sessions:
+        chat_sessions[session_id] = []
+
+    system_prompts = {
         "astrologer": {
-            "en": "You are a helpful astrologer giving accurate Vedic insights in simple terms.",
-            "hi": "आप एक अनुभवी ज्योतिषी हैं जो सरल हिंदी में सटीक वेदिक ज्योतिष उत्तर देते हैं।",
-            "ta": "நீங்கள் ஒரு வேத ஜோதிடர், தமிழில் எளிமையான பதில்கள் அளிக்கிறீர்கள்.",
-            "te": "మీరు అనుభవజ్ఞుడైన జ్యోతిష్కుడు, తెలుగు లో సులభంగా వివరించండి.",
-            "ml": "നിങ്ങൾ ഒരു പ്രായോഗിക ജ്യോതിഷൻ ആണ്, മലയാളത്തിൽ ലളിതമായ ഉത്തരങ്ങൾ നൽകുക.",
-            "kn": "ನೀವು ಅನುಭವಜ್ಞ ಜ್ಯೋತಿಷಿ, ಕನ್ನಡದಲ್ಲಿ ಸರಳ ಉತ್ತರಗಳನ್ನು ನೀಡುತ್ತೀರಿ."
+            "en": "You are a wise Vedic astrologer. Provide accurate and empathetic responses.",
+            "hi": "आप एक अनुभवी वैदिक ज्योतिषी हैं। सहानुभूति और ज्ञान से उत्तर दें।",
+            "ta": "நீங்கள் ஒரு ஞானமிக்க வேத ஜோதிடர். தெளிவாக பதிலளிக்கவும்.",
+            "te": "మీరు జ్ఞానమయిన జ్యోతిష్యుడు. తెలుగులో స్పష్టంగా సమాధానమివ్వండి.",
+            "kn": "ನೀವು ಜ್ಞಾನಿಯಾದ ವೇದ ಜ್ಯೋತಿಷ್ಯರಾಗಿದ್ದೀರಿ. ಸ್ಪಷ್ಟವಾಗಿ ಉತ್ತರಿಸಿ.",
+            "ml": "നീങ്ങെ ഒരു പ്രഗത്ഭനായ ജ്യോതിഷിയാണ്. മനോഹരമായി മറുപടി നൽകുക."
         }
     }
 
-    prompt = system_prompt.get(persona, {}).get(lang, system_prompt["astrologer"]["en"])
+    system = {
+        "role": "system",
+        "content": system_prompts.get(persona, {}).get(lang, system_prompts["astrologer"]["en"])
+    }
+
+    chat_sessions[session_id].append({"role": "user", "content": message})
+
+    messages = [system] + chat_sessions[session_id][-10:]
 
     chat = client.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": message}
-        ]
+        messages=messages
     )
-    return chat.choices[0].message.content.strip()
+
+    reply = chat.choices[0].message.content.strip()
+    chat_sessions[session_id].append({"role": "assistant", "content": reply})
+    return reply
