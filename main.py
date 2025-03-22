@@ -1,19 +1,22 @@
-from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi import FastAPI, Request, Query
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 from pydantic import BaseModel
-from utils.pdf_generator import generate_pdf
-from utils.astro_logic import analyze_chart
-from utils.transit import get_transits
-from utils.match_logic import analyze_match
-from utils.numerology import analyze_numerology
-from utils.gpt_summary import generate_gpt_summary
-from utils.gpt_chat import chat_with_gpt
-import uuid
 import os
+from datetime import datetime
+from utils.astro_logic import analyze_chart
+from utils.pdf_generator import generate_pdf
+from utils.gpt_summary import generate_gpt_summary
+from utils.match_logic import analyze_compatibility
+from utils.numerology import get_numerology_report
+from utils.transit import get_transits
+
+load_dotenv()
 
 app = FastAPI()
 
-# CORS for frontend / Postman
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,82 +24,87 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Environment key
-REQUIRED_API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
-
-# Request schema
-class KPRequest(BaseModel):
+class PredictionInput(BaseModel):
     name: str
     date: str
     time: str
     place: str
-    language: str = "en"
+    lat: float
+    lon: float
+    tz: str
+    lang: str = "en"
     pdf: bool = False
 
-class MatchRequest(BaseModel):
+class MatchInput(BaseModel):
     person1: dict
     person2: dict
-    language: str = "en"
+    lang: str = "en"
     pdf: bool = False
 
-class ChatRequest(BaseModel):
-    message: str
-    session_id: str
-    language: str = "en"
-
-# API Key validator
-def validate_key(x_api_key: str = Header(...)):
-    if x_api_key != REQUIRED_API_KEY:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-
-# Main prediction route
 @app.post("/predict-kp")
-def predict_kp(data: KPRequest, x_api_key: str = Header(...)):
-    validate_key(x_api_key)
-    analysis = analyze_chart(data.dict())
-    summary = generate_gpt_summary(analysis, lang=data.language)
-    numerology = analyze_numerology(data.name, data.date)
+def predict_kp(data: PredictionInput):
+    astro_data = analyze_chart(
+        name=data.name,
+        date=data.date,
+        time=data.time,
+        place=data.place,
+        lat=data.lat,
+        lon=data.lon,
+        tz=data.tz
+    )
+    numerology = get_numerology_report(data.name, data.date)
+    gpt_summary = generate_gpt_summary(astro_data, lang=data.lang)
 
-    response = {
-        "name": data.name,
-        "analysis": analysis,
-        "summary": summary,
+    result = {
+        "astro": astro_data,
         "numerology": numerology,
-        "pdf": None
+        "summary": gpt_summary,
     }
 
     if data.pdf:
-        report_data = {**data.dict(), **analysis, "summary": summary, "numerology": numerology}
-        pdf_path = generate_pdf(report_data, filename=f"{data.name}_report.pdf")
-        response["pdf"] = pdf_path
+        filepath = generate_pdf(
+            {
+                "name": data.name,
+                "date": data.date,
+                "time": data.time,
+                "place": data.place,
+                "astro": astro_data,
+                "numerology": numerology,
+                "gpt": gpt_summary
+            },
+            filename=f"{data.name.replace(' ', '_')}_report.pdf"
+        )
+        return FileResponse(filepath, filename=os.path.basename(filepath))
 
-    return response
+    return result
 
-# Match compatibility
 @app.post("/match-compatibility")
-def match_compat(data: MatchRequest, x_api_key: str = Header(...)):
-    validate_key(x_api_key)
-    match_report = analyze_match(data.person1, data.person2, lang=data.language)
-    pdf_url = None
+def match_compatibility(match: MatchInput):
+    match_data = analyze_compatibility(match.person1, match.person2)
+    summary = generate_gpt_summary(match_data, lang=match.lang, type="match")
 
-    if data.pdf:
-        from utils.pdf_generator import generate_match_pdf
-        pdf_url = generate_match_pdf(data.person1, data.person2, match_report)
+    result = {
+        "match": match_data,
+        "summary": summary
+    }
+
+    # PDF support if needed later
+    return result
+
+@app.get("/daily-transit")
+def daily_transit(
+    lat: float = Query(..., description="Latitude"),
+    lon: float = Query(..., description="Longitude"),
+    timezone: str = Query("Asia/Kolkata", description="Timezone"),
+    lang: str = Query("en", description="Language for GPT summary")
+):
+    now = datetime.now()
+    transits = get_transits(now, lat, lon, timezone)
+    gpt_summary = generate_gpt_summary(transits, lang=lang, type="transit")
 
     return {
-        "match": match_report,
-        "pdf": pdf_url
+        "date": now.strftime("%Y-%m-%d %H:%M"),
+        "location": {"lat": lat, "lon": lon, "timezone": timezone},
+        "transits": transits,
+        "summary": gpt_summary
     }
-
-# Daily transit
-@app.get("/daily-transit")
-def transit(x_api_key: str = Header(...)):
-    validate_key(x_api_key)
-    return get_transits()
-
-# GPT Chatbot
-@app.post("/chat")
-def chat(data: ChatRequest, x_api_key: str = Header(...)):
-    validate_key(x_api_key)
-    reply = chat_with_gpt(data.message, session_id=data.session_id, lang=data.language)
-    return {"reply": reply}
