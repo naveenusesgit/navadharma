@@ -62,3 +62,47 @@ def predict_kp(req: PredictionRequest):
         return {"summary": data["summary"], "pdf_url": f"/static/{filename}"}
 
     return data
+def suggest_remedies(data):
+    remedies = []
+
+    if "Ketu" in data.get("nakshatra", {}).get("nakshatra_lord", ""):
+        remedies.append("Recite Ketu Beej Mantra on Tuesdays.")
+        remedies.append("Donate sesame seeds and blankets to the poor.")
+
+    if any(yoga["name"] == "Raja Yoga" for yoga in data.get("nakshatra", {}).get("yogas", [])):
+        remedies.append("Wear Yellow Sapphire (if horoscope supports it).")
+
+    if data.get("currentDasha", {}).get("mahadasha") == "Venus":
+        remedies.append("Worship Goddess Lakshmi every Friday.")
+
+    return remedies
+
+def generate_gpt_summary(data):
+    messages = [
+        {"role": "system", "content": "You are a traditional Vedic astrologer who uses KP astrology, divisional charts, and nakshatras to guide people. Your tone is spiritual yet clear."},
+        {"role": "user", "content": f"""
+Analyze this birth chart and provide a spiritual 4-line prediction.
+
+Date: {data.get('date')}
+Time: {data.get('time')}
+Place: {data.get('place')}
+Lagna: {data.get('lagna')}
+Mahadasha: {data.get('currentDasha', {}).get('mahadasha')}
+Antardasha: {data.get('currentDasha', {}).get('antardasha')}
+Nakshatra: {data.get('nakshatra', {}).get('nakshatra')}
+Yogas: {data.get('nakshatra', {}).get('yogas', [])}
+Remedies: {data.get('remedies')}
+D9: {data.get('divisional_charts', {}).get('D9')}
+D10: {data.get('divisional_charts', {}).get('D10')}
+        """}
+    ]
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            temperature=0.8,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error from GPT: {str(e)}"
