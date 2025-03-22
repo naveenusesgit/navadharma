@@ -1,100 +1,114 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Depends, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from utils.pdf_generator import generate_pdf
-from utils.swisseph_utils import calculate_planet_positions
-from openai import OpenAI
-from dotenv import load_dotenv
+from typing import Optional
 import os
+import requests
+import openai
+from utils.pdf_generator import generate_pdf
+from utils.astro_logic import (
+    get_lat_lon, get_julian_day, get_moon_nakshatra,
+    get_sample_yogas, get_dasha
+)
+from dotenv import load_dotenv
 
-# 🌍 Load environment variables (OPENAI_API_KEY etc.)
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = os.getenv("OPENAI_API_KEY")
+API_KEY = os.getenv("NAVADHARMA_API_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
 app = FastAPI()
 
-# 🧾 Request model
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
+)
+
+# ✅ Request model
 class KPRequest(BaseModel):
-    date: str
-    time: str
+    name: Optional[str] = "User"
+    date: str  # YYYY-MM-DD
+    time: str  # HH:MM (24h)
     place: str
-    pdf: bool = False
-    persona: str = "vedic_sage"
+    pdf: Optional[bool] = False
 
-# 🧠 GPT Summary Function
-def generate_gpt_summary(data, persona="vedic_sage"):
-    system_prompt = {
-        "vedic_sage": "You are a wise Vedic astrologer using deep yogas, dasha, and planetary karma insights.",
-        "cool_astro_bro": "You are a witty Gen-Z astrologer who makes karma cool and predictions accessible.",
-        "fortune_teller": "You're a dramatic astrologer who speaks like an oracle with prophecy-like tone."
-    }
+# ✅ API Key verification
+async def verify_api_key(x_api_key: str = Header(...)):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
 
-    messages = [
-        {"role": "system", "content": system_prompt.get(persona, system_prompt["vedic_sage"])},
-        {"role": "user", "content": f"""
-Lagna: {data.get('lagna')}
-Mahadasha: {data.get('currentDasha', {}).get('mahadasha')}
-Nakshatra: {data.get('nakshatra', {}).get('nakshatra')}
-Yogas: {data.get('nakshatra', {}).get('yogas', [])}
-Planetary Positions: {data.get('planet_positions')}
-Remedies: {data.get('remedies')}
-Divisional Charts: {data.get('divisional_charts')}
-        """}
-    ]
-
+# ✅ GPT-powered summary
+def generate_gpt_summary(data):
     try:
-        response = client.chat.completions.create(
+        prompt = f"""You're a wise Vedic astrologer. Given this data:
+        Nakshatra: {data['nakshatra']['nakshatra']},
+        Mahadasha: {data['currentDasha']['mahadasha']},
+        Yogas: {', '.join([y['name'] for y in data['nakshatra']['yogas']])}
+        Give a short, elegant prediction."""
+        
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=messages,
-            temperature=0.85,
+            messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"Error from GPT: {str(e)}"
+        return "GPT prediction unavailable."
 
-# 🎯 Main Prediction Endpoint
-@app.post("/predict-kp")
+# ✅ Predict endpoint
+@app.post("/predict-kp", dependencies=[Depends(verify_api_key)])
 async def predict_kp(req: KPRequest):
-    # 🌠 Prepare prediction data (mocked for now)
-    data = {
+    # 🌍 Get lat/lon from place
+    lat, lon = get_lat_lon(req.place)
+
+    # 📆 Julian Day from date/time
+    jd = get_julian_day(req.date, req.time)
+
+    # 🌓 Nakshatra, Dasha, Yogas
+    nakshatra = get_moon_nakshatra(jd)
+    yogas = get_sample_yogas(jd)
+    dasha = get_dasha(jd)
+
+    # 📦 Full Data Bundle
+    report_data = {
+        "name": req.name,
         "date": req.date,
         "time": req.time,
         "place": req.place,
-        "lagna": "Aries",
-        "currentDasha": {
-            "mahadasha": "Venus",
-            "antardasha": "Saturn",
-            "period": "2023-08-01 to 2026-05-15"
-        },
+        "lagna": "Aries",  # Optional: Add real calculation
+        "currentDasha": dasha,
         "nakshatra": {
-            "nakshatra": "Ashwini",
-            "nakshatra_lord": "Ketu",
-            "yogas": [
-                {"name": "Chandra-Mangal Yoga", "effect": "Gives financial intuition."},
-                {"name": "Budha-Aditya Yoga", "effect": "Sharp intellect and communication skills."}
-            ]
+            "nakshatra": nakshatra,
+            "nakshatra_lord": "Ketu",  # Example
+            "yogas": yogas
         },
-        "remedies": [
-            "Chant 'Om Shukraya Namah' on Fridays",
-            "Donate white sweets to unmarried women"
-        ],
-        "divisional_charts": {
-            "D9 (Navamsa)": {"ascendant": "Sagittarius", "notes": "Focus on dharma and partnerships"},
-            "D10 (Dasamsa)": {"ascendant": "Libra", "notes": "Career through diplomacy or beauty"}
+        "predictions": {
+            "marriage": {
+                "likely": True,
+                "window": "2024–2025",
+                "explanation": "Venus sub-lord active in Dasha.",
+                "hidden": True
+            },
+            "career": {
+                "change": False,
+                "explanation": "10th house lord stable.",
+                "hidden": True
+            },
+            "gpt_summary": generate_gpt_summary({
+                "nakshatra": {"nakshatra": nakshatra, "yogas": yogas},
+                "currentDasha": dasha
+            })
         }
     }
 
-    # 🪐 Calculate Real Planetary Positions
-    # (Assume Mumbai for now — update with real geocoding later)
-    lat, lon = 19.0760, 72.8777
-    data["planet_positions"] = calculate_planet_positions(req.date, req.time, lat, lon)
-
-    # 🧠 GPT Summary
-    data["summary"] = generate_gpt_summary(data, persona=req.persona)
-
+    # 📄 Generate PDF if needed
     if req.pdf:
-        pdf_path = generate_pdf(data, filename="Navadharma_Report.pdf")
-        return FileResponse(pdf_path, media_type="application/pdf", filename="Navadharma_Report.pdf")
+        filename = f"{req.name.replace(' ', '_')}_Navadharma_Report.pdf"
+        pdf_path = generate_pdf(report_data, filename=filename)
+        return {
+            "success": True,
+            "data": report_data,
+            "pdf_url": f"https://navadharma.onrender.com/{pdf_path}"
+        }
 
-    return JSONResponse(content=data)
+    return {"success": True, "data": report_data}
+
