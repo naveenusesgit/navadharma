@@ -2,3 +2,5 @@ fastapi
 uvicorn
 pydantic
 fpdf
+qrcode
+python-dotenv
