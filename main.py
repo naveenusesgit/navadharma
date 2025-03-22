@@ -19,14 +19,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Pydantic Input Schema
 class PredictionRequest(BaseModel):
     date: str  # YYYY-MM-DD
     time: str  # HH:MM
     place: str
     pdf: Optional[bool] = False
 
-# Get lat/lon from place
+# Constants
+PLANETS = {
+    "Sun": swe.SUN,
+    "Moon": swe.MOON,
+    "Mars": swe.MARS,
+    "Mercury": swe.MERCURY,
+    "Jupiter": swe.JUPITER,
+    "Venus": swe.VENUS,
+    "Saturn": swe.SATURN,
+    "Rahu": swe.MEAN_NODE,
+    "Ketu": swe.TRUE_NODE  # computed as Rahu + 180°
+}
+
+DASHA_SEQUENCE = [
+    "Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury"
+]
+DASHA_YEARS = {
+    "Ketu": 7, "Venus": 20, "Sun": 6, "Moon": 10, "Mars": 7,
+    "Rahu": 18, "Jupiter": 16, "Saturn": 19, "Mercury": 17
+}
+
+# Helpers
 def get_coordinates(place_name):
     geolocator = Nominatim(user_agent="navadharma")
     location = geolocator.geocode(place_name)
@@ -34,61 +54,89 @@ def get_coordinates(place_name):
         return None, None
     return location.latitude, location.longitude
 
-# Calculate Lagna (Ascendant)
 def get_lagna(date_str, time_str, lat, lon):
     dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
     jd_ut = swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60.0)
-    swe.set_ephe_path('.')  # Path to ephemeris files if needed
+    swe.set_ephe_path(".")
     houses = swe.houses(jd_ut, lat, lon)
-    asc_degree = houses[0][0]  # Lagna in degrees
-
-    # Get sign (0=Aries, ..., 11=Pisces)
-    sign_index = int(asc_degree / 30)
+    asc_degree = houses[0][0]
     signs = [
         "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
         "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
     ]
+    sign_index = int(asc_degree / 30)
     return signs[sign_index]
 
-# Main Endpoint
+def get_planet_positions(date_str, time_str, lat, lon):
+    dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    jd_ut = swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60.0)
+    swe.set_ephe_path(".")
+    positions = {}
+    for name, planet_id in PLANETS.items():
+        lon, _lat, dist, speed = swe.calc_ut(jd_ut, planet_id)
+        if name == "Ketu":
+            lon = (lon + 180) % 360
+        positions[name] = round(lon, 2)
+    return positions
+
+def get_current_dasha(date_str, time_str, lat, lon):
+    dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    jd_ut = swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60.0)
+    moon_lon, _, _, _ = swe.calc_ut(jd_ut, swe.MOON)
+    
+    nakshatra_index = int(moon_lon // (360 / 27))
+    dasha_lord = DASHA_SEQUENCE[nakshatra_index % 9]
+    dasha_years = DASHA_YEARS[dasha_lord]
+
+    start_year = dt.year
+    end_year = start_year + dasha_years
+    mahadasha_period = f"{start_year}-01-01 to {end_year}-01-01"
+
+    # Fake Antardasha based on moon position (this is simplified)
+    sub_index = int((moon_lon % (360 / 27)) / ((360 / 27) / 9))
+    antardasha = DASHA_SEQUENCE[sub_index % 9]
+
+    return {
+        "mahadasha": dasha_lord,
+        "antardasha": antardasha,
+        "period": mahadasha_period
+    }
+
 @app.post("/predict-kp")
 async def predict_kp(request: PredictionRequest):
     try:
-        # ✅ Validate Date
+        # Validate date
         try:
             datetime.strptime(request.date, "%Y-%m-%d")
         except ValueError:
             return JSONResponse(status_code=400, content={"error": "Invalid date format. Use YYYY-MM-DD"})
 
-        # ✅ Validate Time
+        # Validate time
         try:
             datetime.strptime(request.time, "%H:%M")
         except ValueError:
-            return JSONResponse(status_code=400, content={"error": "Invalid time format. Use HH:MM (24-hour)"})
+            return JSONResponse(status_code=400, content={"error": "Invalid time format. Use HH:MM"})
 
-        # ✅ Validate Place
+        # Validate place
         if not request.place or len(request.place.strip()) < 2:
-            return JSONResponse(status_code=400, content={"error": "Place must be a valid name"})
+            return JSONResponse(status_code=400, content={"error": "Place is required."})
 
-        # 🔍 Get coordinates
         lat, lon = get_coordinates(request.place)
-        if lat is None or lon is None:
-            return JSONResponse(status_code=400, content={"error": "Unable to geolocate place"})
+        if lat is None:
+            return JSONResponse(status_code=400, content={"error": "Could not resolve location."})
 
-        # 🔮 Compute Lagna using swisseph
+        # Astro Calculations
         lagna_sign = get_lagna(request.date, request.time, lat, lon)
+        planets = get_planet_positions(request.date, request.time, lat, lon)
+        dasha_info = get_current_dasha(request.date, request.time, lat, lon)
 
-        # ✅ Simulated Prediction Output
         report_data = {
             "date": request.date,
             "time": request.time,
             "place": request.place,
             "lagna": lagna_sign,
-            "currentDasha": {
-                "mahadasha": "Venus",
-                "antardasha": "Saturn",
-                "period": "2023-08-01 to 2026-05-15"
-            },
+            "planetaryPositions": planets,
+            "currentDasha": dasha_info,
             "predictions": {
                 "marriage": {
                     "likely": True,
@@ -111,7 +159,6 @@ async def predict_kp(request: PredictionRequest):
             }
         }
 
-        # 📄 Return PDF or JSON
         if request.pdf:
             filepath = generate_pdf(report_data, filename="Navadharma_Report.pdf")
             return FileResponse(filepath, filename="Navadharma_Report.pdf", media_type="application/pdf")
