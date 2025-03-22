@@ -1,4 +1,3 @@
-import os
 from utils.gpt_summary import generate_gpt_summary
 
 def get_remedies_from_gpt(astro_context: dict, lang="en"):
