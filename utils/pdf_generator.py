@@ -4,8 +4,15 @@ from datetime import datetime
 
 class PDFReport(FPDF):
     def header(self):
-        if os.path.exists("static/logo.png"):
-            self.image("static/logo.png", 10, 8, 33)
+        try:
+            if os.path.exists("static/logo.png"):
+                self.image("static/logo.png", 10, 8, 33)
+                print("✅ Logo added to PDF header")
+            else:
+                print("⚠️ Logo not found at static/logo.png")
+        except Exception as e:
+            print("⚠️ Failed to add logo:", str(e))
+
         self.set_font("Arial", "B", 15)
         self.cell(0, 10, "Navadharma KP Astrology Report", ln=True, align="C")
         self.ln(10)
@@ -42,4 +49,5 @@ def generate_pdf(data: dict, filename="navadharma_report.pdf") -> str:
     out_path = f"static/{filename}"
     os.makedirs("static", exist_ok=True)
     pdf.output(out_path)
+    print(f"✅ PDF saved at: {out_path}")
     return out_path
