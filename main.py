@@ -1,102 +1,84 @@
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import os
-
-from utils.astro_engine import compute_full_chart
-from utils.astro_logic import detect_yogas, get_nakshatras, get_remedies
-from utils.gpt_summary import generate_gpt_summary
+from utils.astro_logic import calculate_astro_details
 from utils.pdf_generator import generate_pdf
+from utils.gpt_summary import generate_gpt_summary
 from utils.transit import get_current_transits
-from utils.match_logic import compute_match_score
-from utils.email_utils import send_report_email
+from utils.numerology import numerology_profile
+from utils.match_logic import match_compatibility
+import os
 
 load_dotenv()
 
 app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"]
-)
+API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
 
-NAVADHARMA_API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
+# ---------------- Models ----------------
 
-class KPInput(BaseModel):
+class KPRequest(BaseModel):
     name: str
     date: str
     time: str
     place: str
-    language: str = "en"
     pdf: bool = False
-    paid: bool = False
-    email: str | None = None
-    partner: dict | None = None
+    lang: str = "en"
 
+class MatchRequest(BaseModel):
+    partner1: dict
+    partner2: dict
+    pdf: bool = False
+    lang: str = "en"
 
-@app.post("/predict-kp")
-async def predict_kp(req: Request, input: KPInput):
-    api_key = req.headers.get("x-api-key")
-    if api_key != NAVADHARMA_API_KEY:
+# ---------------- Auth ----------------
+
+def verify_key(request: Request):
+    key = request.headers.get("x-api-key")
+    if key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
-    # Step 1: Core Chart Data
-    full_chart = compute_full_chart(input.date, input.time, input.place)
+# ---------------- Endpoints ----------------
 
-    # Step 2: Yogas, Nakshatra, Dasha
-    yogas = detect_yogas(full_chart["planet_positions"], full_chart["moon"], full_chart["lagna_sign"])
-    nakshatras = get_nakshatras(full_chart["planet_longitudes"], full_chart["nakshatra_list"])
-    remedies = get_remedies(yogas=yogas, dashas=[full_chart["dasha"]], nakshatras=list(nakshatras.values()), language=input.language)
+@app.post("/predict-kp")
+async def predict_kp(request: Request, payload: KPRequest):
+    verify_key(request)
+    data = payload.dict()
 
-    # Step 3: GPT Summary
-    gpt_summary = generate_gpt_summary(full_chart, yogas, nakshatras, language=input.language)
+    astro = calculate_astro_details(data)
+    summary = generate_gpt_summary(astro, lang=data["lang"])
+    astro["gptSummary"] = summary
 
-    # Step 4: Transit
-    transit = get_current_transits()
+    if data["pdf"]:
+        pdf_path = generate_pdf(astro, filename="Navadharma_Report.pdf")
+        return FileResponse(pdf_path, media_type="application/pdf", filename="Navadharma_Report.pdf")
 
-    # Step 5: Match-making (optional)
-    match_score = None
-    match_summary = None
-    if input.partner:
-        match_score, match_summary = compute_match_score(full_chart, input.partner)
+    return astro
 
-    # Step 6: Build data
-    result = {
-        "name": input.name,
-        "date": input.date,
-        "time": input.time,
-        "place": input.place,
-        "planet_positions": full_chart["planet_positions"],
-        "nakshatras": nakshatras,
-        "yogas": yogas,
-        "dasha": full_chart["dasha"],
-        "gpt_summary": gpt_summary,
-        "transit": transit,
-        "remedies": remedies,
-        "match_score": match_score,
-        "match_summary": match_summary
+
+@app.post("/match-compatibility")
+async def match_compat(request: Request, payload: MatchRequest):
+    verify_key(request)
+
+    data = payload.dict()
+    p1 = data["partner1"]
+    p2 = data["partner2"]
+
+    match = match_compatibility(p1, p2)
+    match["numerology"] = {
+        "partner1": numerology_profile(p1.get("name", ""), p1.get("date", "")),
+        "partner2": numerology_profile(p2.get("name", ""), p2.get("date", ""))
     }
 
-    # Step 7: PDF
-    if input.pdf:
-        filename = f"{input.name.replace(' ', '_')}_Navadharma_Report.pdf"
-        path = generate_pdf(result, filename=filename, remedies=remedies, language=input.language)
-        result["pdf_path"] = f"/static/{filename}"
+    if data["pdf"]:
+        from utils.pdf_generator import generate_match_pdf
+        path = generate_match_pdf(match, filename="Match_Report.pdf")
+        return FileResponse(path, media_type="application/pdf", filename="Match_Report.pdf")
 
-    # Step 8: Email report (paid only)
-    if input.paid and input.email:
-        try:
-            send_report_email(input.email, path)
-            result["email_status"] = "sent"
-        except Exception as e:
-            result["email_status"] = f"failed: {str(e)}"
-
-    return result
+    return match
 
 
 @app.get("/daily-transit")
-def daily_transit():
-    return {
-        "transit": get_current_transits()
-    }
+async def daily_transit(request: Request):
+    verify_key(request)
+    return get_current_transits()
