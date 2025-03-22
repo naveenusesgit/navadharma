@@ -1,59 +1,62 @@
-# utils/astro_logic.py
-
-def detect_yogas(planet_positions, moon_pos, lagna_sign):
-    yogas = []
-
-    if "Jupiter" in planet_positions and "Moon" in planet_positions:
-        jup = planet_positions["Jupiter"]
-        moon = planet_positions["Moon"]
-        if abs(jup["sign"] - moon["sign"]) in [4, 10]:
-            yogas.append("Gajakesari Yoga")
-
-    if "Mercury" in planet_positions and "Sun" in planet_positions:
-        if planet_positions["Mercury"]["sign"] == planet_positions["Sun"]["sign"]:
-            yogas.append("Budha-Aditya Yoga")
-
-    if moon_pos["alone"]:
-        yogas.append("Kemadruma Yoga")
-
-    return yogas
+import swisseph as swe
+from datetime import datetime
+from utils.dasha_logic import get_dasha_periods
+from utils.nakshatra import get_nakshatra
+from utils.yogas import detect_yogas
+from utils.remedies import suggest_remedies
+from utils.chart_utils import get_coordinates, get_timezone_offset
 
 
-def get_nakshatras(planet_longitudes, nakshatra_list):
-    nakshatras = {}
-    for planet, lon in planet_longitudes.items():
-        index = int(lon / (360 / 27)) % 27
-        nakshatras[planet] = nakshatra_list[index]
-    return nakshatras
+def analyze_chart(birth_details: dict) -> dict:
+    date_str = birth_details.get("date")
+    time_str = birth_details.get("time")
+    place = birth_details.get("place")
+    language = birth_details.get("language", "en")
 
+    # Parse datetime
+    birth_datetime = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
 
-def get_remedies(yogas=[], dashas=[], nakshatras=[], language="en"):
-    remedies = []
+    # Get coordinates and timezone
+    lat, lon = get_coordinates(place)
+    tz_offset = get_timezone_offset(lat, lon, birth_datetime)
 
-    if "Gajakesari Yoga" in yogas:
-        remedies.append({
-            "title": "Gajakesari Yoga",
-            "remedy": {
-                "en": "Worship Lord Ganesha on Wednesdays for wisdom.",
-                "hi": "बुद्धवार को भगवान गणेश की पूजा करें।",
-                "ta": "புதன்கிழமை விநாயகரைப் பூஜிக்கவும்.",
-                "te": "బుధవారం వినాయకుని పూజించండి.",
-                "ml": "ബുധനാഴ്ച വിനായകനെ പൂജിക്കുക.",
-                "kn": "ಬುಧವಾರ ಗಣೇಶನ ಪೂಜೆ ಮಾಡಿರಿ."
-            }
-        })
+    # Adjust datetime to UTC for swisseph
+    utc_datetime = birth_datetime - tz_offset
 
-    if "Kemadruma Yoga" in yogas:
-        remedies.append({
-            "title": "Kemadruma Yoga",
-            "remedy": {
-                "en": "Chant Moon beej mantra daily to reduce emotional fluctuations.",
-                "hi": "चंद्र बीज मंत्र का रोज़ जाप करें।",
-                "ta": "நிகழ்நிலை குறைக்க சந்திர பீஜ மந்திரம் ஜெபிக்கவும்.",
-                "te": "చంద్ర బీజ మంత్రాన్ని జపించండి.",
-                "ml": "ചന്ദ്ര ബീജ മന്ത്രം ജപിക്കുക.",
-                "kn": "ಚಂದ್ರ ಬೀಜ ಮಂತ್ರ ಜಪಿಸಿ."
-            }
-        })
+    jd_ut = swe.julday(utc_datetime.year, utc_datetime.month, utc_datetime.day,
+                       utc_datetime.hour + utc_datetime.minute / 60.0)
 
-    return remedies
+    # Get planetary positions
+    planet_positions = {}
+    planet_names = {
+        swe.SUN: "Sun", swe.MOON: "Moon", swe.MERCURY: "Mercury", swe.VENUS: "Venus",
+        swe.MARS: "Mars", swe.JUPITER: "Jupiter", swe.SATURN: "Saturn",
+        swe.RAHU: "Rahu", swe.KETU: "Ketu"
+    }
+
+    for planet, name in planet_names.items():
+        lon, _, _, _, _, _ = swe.calc_ut(jd_ut, planet)
+        nakshatra_info = get_nakshatra(lon)
+        planet_positions[name] = {
+            "longitude": lon,
+            "nakshatra": nakshatra_info.get("name"),
+            "pada": nakshatra_info.get("pada")
+        }
+
+    # Dasha logic (Vimshottari)
+    dashas = get_dasha_periods(jd_ut, planet_positions["Moon"]["longitude"])
+
+    # Yogas
+    yogas = detect_yogas(planet_positions)
+
+    # Remedies
+    remedies = suggest_remedies(yogas, dashas)
+
+    return {
+        "planets": planet_positions,
+        "nakshatras": {k: v["nakshatra"] for k, v in planet_positions.items()},
+        "yogas": yogas,
+        "dashas": dashas,
+        "remedies": remedies,
+        "language": language
+    }
