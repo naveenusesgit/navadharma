@@ -4,3 +4,5 @@ pydantic
 fpdf
 qrcode
 python-dotenv
+pyswisseph
+geopy
