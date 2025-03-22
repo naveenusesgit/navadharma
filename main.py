@@ -1,114 +1,94 @@
-from fastapi import FastAPI, Depends, Header, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, HTTPException, Header
 from pydantic import BaseModel
-from typing import Optional
-import os
-import requests
-import openai
 from utils.pdf_generator import generate_pdf
-from utils.astro_logic import (
-    get_lat_lon, get_julian_day, get_moon_nakshatra,
-    get_sample_yogas, get_dasha
-)
+from utils.astro_logic import analyze_chart
+from utils.gpt_summary import generate_gpt_summary
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
-API_KEY = os.getenv("NAVADHARMA_API_KEY")
 
 app = FastAPI()
+API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
-)
+# ------------------ INPUT MODEL ------------------ #
 
-# ✅ Request model
 class KPRequest(BaseModel):
-    name: Optional[str] = "User"
-    date: str  # YYYY-MM-DD
-    time: str  # HH:MM (24h)
+    date: str           # Format: YYYY-MM-DD
+    time: str           # Format: HH:MM (24h)
     place: str
-    pdf: Optional[bool] = False
+    lat: float
+    lon: float
+    pdf: bool = False
+    gpt: bool = False
 
-# ✅ API Key verification
-async def verify_api_key(x_api_key: str = Header(...)):
+
+# ------------------ PROTECTED ENDPOINT ------------------ #
+
+@app.post("/predict-kp")
+async def predict_kp(request: KPRequest, x_api_key: str = Header(None)):
+
     if x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
+        raise HTTPException(status_code=403, detail="Invalid API Key")
 
-# ✅ GPT-powered summary
-def generate_gpt_summary(data):
-    try:
-        prompt = f"""You're a wise Vedic astrologer. Given this data:
-        Nakshatra: {data['nakshatra']['nakshatra']},
-        Mahadasha: {data['currentDasha']['mahadasha']},
-        Yogas: {', '.join([y['name'] for y in data['nakshatra']['yogas']])}
-        Give a short, elegant prediction."""
-        
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return "GPT prediction unavailable."
+    # 🌌 Step 1: Analyze chart
+    astro = analyze_chart(request.date, request.time, request.lat, request.lon)
 
-# ✅ Predict endpoint
-@app.post("/predict-kp", dependencies=[Depends(verify_api_key)])
-async def predict_kp(req: KPRequest):
-    # 🌍 Get lat/lon from place
-    lat, lon = get_lat_lon(req.place)
-
-    # 📆 Julian Day from date/time
-    jd = get_julian_day(req.date, req.time)
-
-    # 🌓 Nakshatra, Dasha, Yogas
-    nakshatra = get_moon_nakshatra(jd)
-    yogas = get_sample_yogas(jd)
-    dasha = get_dasha(jd)
-
-    # 📦 Full Data Bundle
-    report_data = {
-        "name": req.name,
-        "date": req.date,
-        "time": req.time,
-        "place": req.place,
-        "lagna": "Aries",  # Optional: Add real calculation
-        "currentDasha": dasha,
-        "nakshatra": {
-            "nakshatra": nakshatra,
-            "nakshatra_lord": "Ketu",  # Example
-            "yogas": yogas
+    # 📜 Step 2: Build predictions (placeholder logic)
+    predictions = {
+        "marriage": {
+            "likely": True,
+            "window": "2024–2025",
+            "explanation": "Venus is sub-lord of 7th house and active in Dasha",
+            "hidden": True
         },
-        "predictions": {
-            "marriage": {
-                "likely": True,
-                "window": "2024–2025",
-                "explanation": "Venus sub-lord active in Dasha.",
-                "hidden": True
-            },
-            "career": {
-                "change": False,
-                "explanation": "10th house lord stable.",
-                "hidden": True
-            },
-            "gpt_summary": generate_gpt_summary({
-                "nakshatra": {"nakshatra": nakshatra, "yogas": yogas},
-                "currentDasha": dasha
-            })
+        "career": {
+            "change": False,
+            "explanation": "10th lord is stable and unaffected by transit",
+            "hidden": True
         }
     }
 
-    # 📄 Generate PDF if needed
-    if req.pdf:
-        filename = f"{req.name.replace(' ', '_')}_Navadharma_Report.pdf"
-        pdf_path = generate_pdf(report_data, filename=filename)
-        return {
-            "success": True,
-            "data": report_data,
-            "pdf_url": f"https://navadharma.onrender.com/{pdf_path}"
-        }
+    # ✨ Step 3: GPT Summary (if requested)
+    gpt_summary = ""
+    if request.gpt:
+        try:
+            gpt_summary = generate_gpt_summary(request.date, request.time, request.place, astro)
+        except Exception as e:
+            gpt_summary = f"GPT error: {str(e)}"
 
-    return {"success": True, "data": report_data}
+    # 📄 Step 4: Generate PDF (if requested)
+    report_data = {
+        "date": request.date,
+        "time": request.time,
+        "place": request.place,
+        "lagna": astro.get("lagnaDegree"),
+        "nakshatras": astro.get("nakshatras"),
+        "dasha": astro.get("dasha", {}),
+        "yogas": {
+            "Lagna Yogas": astro.get("lagnaYogas", []),
+            "Chandra Yogas": astro.get("chandraLagnaYogas", []),
+            "Special Yogas": astro.get("specialYogas", [])
+        },
+        "predictions": predictions,
+        "gpt": gpt_summary
+    }
 
+    pdf_url = None
+    if request.pdf:
+        filename = f"Navadharma_Report_{request.date}.pdf"
+        filepath = generate_pdf(report_data, filename=filename)
+        pdf_url = f"https://navadharma.onrender.com/static/{filename}"
+
+    return {
+        "nakshatras": astro.get("nakshatras"),
+        "yogas": astro.get("lagnaYogas") + astro.get("chandraLagnaYogas") + astro.get("specialYogas"),
+        "planetHouses": astro.get("planetHouses"),
+        "gpt_summary": gpt_summary,
+        "pdf": pdf_url
+    }
+
+
+@app.get("/")
+def root():
+    return {"message": "🪔 Navadharma KP Prediction API is live!"}
