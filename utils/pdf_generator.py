@@ -7,7 +7,6 @@ class PDF(FPDF):
         if os.path.exists("static/logo.png"):
             self.image("static/logo.png", 10, 8, 30)
         self.set_font("Helvetica", "B", 16)
-        self.set_text_color(30, 30, 30)
         self.cell(0, 10, "Navadharma Prediction Report", ln=True, align="C")
         self.ln(10)
 
@@ -21,44 +20,41 @@ def generate_pdf(data: dict, filename="report.pdf"):
     pdf = PDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_font("Helvetica", "", 12)
 
     def section_title(title):
         pdf.set_font("Helvetica", "B", 13)
-        pdf.set_text_color(0, 0, 128)
+        pdf.set_text_color(0)
         pdf.cell(0, 10, title, ln=True)
         pdf.set_font("Helvetica", "", 12)
         pdf.set_text_color(30, 30, 30)
 
-    # Birth Info
-    section_title("Birth Details")
+    # Birth Details
+    section_title("📅 Birth Details")
     pdf.cell(0, 10, f"Date: {data.get('date', '—')}", ln=True)
     pdf.cell(0, 10, f"Time: {data.get('time', '—')}", ln=True)
     pdf.cell(0, 10, f"Place: {data.get('place', '—')}", ln=True)
     pdf.ln(5)
 
-    # Dasha & Lagna
-    section_title("Current Astrological Snapshot")
-    lagna = data.get("lagna", "—")
-    dasha = data.get("currentDasha", {})
-    pdf.cell(0, 10, f"Lagna: {lagna}", ln=True)
-    pdf.cell(0, 10, f"Mahadasha: {dasha.get('mahadasha', '—')} | Antardasha: {dasha.get('antardasha', '—')}", ln=True)
-    pdf.cell(0, 10, f"Dasha Period: {dasha.get('period', '—')}", ln=True)
-    pdf.ln(5)
-
     # Charts
-    for chart_file in ["birth_chart.png", "d9_chart.png", "d10_chart.png", "d7_chart.png"]:
-        chart_path = f"static/{chart_file}"
+    for chart, label in [("birth_chart.png", "🌀 Birth Chart"), ("kp_chart.png", "🧭 KP Chart")]:
+        chart_path = f"static/{chart}"
         if os.path.exists(chart_path):
-            title = chart_file.replace("_chart.png", "").upper()
-            section_title(f"{title} Chart")
+            section_title(label)
             pdf.image(chart_path, w=100)
             pdf.ln(5)
 
+    # Lagna & Dasha
+    section_title("🌠 Astrological Snapshot")
+    lagna = data.get("lagna", "—")
+    dasha = data.get("currentDasha", {})
+    pdf.cell(0, 10, f"Lagna: {lagna}", ln=True)
+    pdf.cell(0, 10, f"Mahadasha: {dasha.get('mahadasha', '—')}, Antardasha: {dasha.get('antardasha', '—')}", ln=True)
+    pdf.cell(0, 10, f"Dasha Period: {dasha.get('period', '—')}", ln=True)
+    pdf.ln(5)
+
     # Predictions
-    section_title("Predictions")
-    predictions = data.get("predictions", {})
-    for topic, content in predictions.items():
+    section_title("🔮 Predictions")
+    for topic, content in data.get("predictions", {}).items():
         pdf.set_font("Helvetica", "B", 12)
         pdf.cell(0, 8, topic.capitalize(), ln=True)
         pdf.set_font("Helvetica", "", 12)
@@ -69,34 +65,33 @@ def generate_pdf(data: dict, filename="report.pdf"):
                     pdf.multi_cell(0, 8, f"{k.capitalize()}: {v}")
         if content.get("hidden", False):
             pdf.set_text_color(150, 0, 0)
-            pdf.cell(0, 8, "Full reading available in Premium Report", ln=True)
+            pdf.cell(0, 8, "🔒 Full reading available in Premium Report", ln=True)
             pdf.set_text_color(0)
         pdf.ln(4)
 
     # Yogas
     yogas = data.get("yogas", [])
     if yogas:
-        section_title("Yogas Detected")
-        for y in yogas:
-            pdf.cell(0, 8, f"• {y}", ln=True)
-        pdf.ln(5)
+        section_title("🧘 Significant Yogas")
+        for yoga in yogas:
+            pdf.cell(0, 8, f"• {yoga}", ln=True)
+        pdf.ln(4)
 
     # Remedies
     remedies = data.get("remedies", [])
     if remedies:
-        section_title("Suggested Remedies")
+        section_title("🕉 Remedies Suggested")
         for r in remedies:
-            pdf.multi_cell(0, 8, f"→ {r}")
-        pdf.ln(5)
+            pdf.cell(0, 8, f"✓ {r}", ln=True)
+        pdf.ln(4)
 
-    # QR
+    # QR Code
     qr_data = "https://navadharma.com"
-    qr = qrcode.make(qr_data)
     qr_path = "static/nav_qr.png"
-    qr.save(qr_path)
+    qrcode.make(qr_data).save(qr_path)
     pdf.image(qr_path, x=160, y=pdf.get_y(), w=30)
 
-    # Save PDF
     output_path = f"static/{filename}"
     pdf.output(output_path, "F")
     return output_path
+
