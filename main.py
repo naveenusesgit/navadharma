@@ -1,79 +1,50 @@
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-import os
 from dotenv import load_dotenv
-
 from utils.pdf_generator import generate_pdf
-from utils.astro_logic import get_full_astrology_data
+from utils.astro_logic import generate_astrology_report
 from utils.gpt_summary import generate_gpt_summary
+import os
 
 load_dotenv()
 
 app = FastAPI()
 
-# CORS for testing
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# API Key protection
-API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
-
-class PredictionRequest(BaseModel):
+class RequestData(BaseModel):
     name: str
-    date: str  # Format: YYYY-MM-DD
-    time: str  # Format: HH:MM
+    date: str
+    time: str
     place: str
     pdf: bool = False
 
-@app.get("/")
-def root():
-    return {"message": "🔮 Navadharma KP Astrology API is running!"}
-
 @app.post("/predict-kp")
-async def predict_kp(request: Request, payload: PredictionRequest):
-    # ✅ 1. Check API Key
-    headers = request.headers
-    client_key = headers.get("X-API-KEY")
-    if client_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Unauthorized API key")
-
-    # ✅ 2. Extract data
-    user_input = payload.dict()
-
+async def predict_kp(request: RequestData):
     try:
-        # ✅ 3. Perform Astrology Calculations
-        report_data = get_full_astrology_data(
-            name=user_input["name"],
-            date=user_input["date"],
-            time=user_input["time"],
-            place=user_input["place"]
-        )
+        # Step 1: Parse request data
+        name = request.name
+        date = request.date
+        time = request.time
+        place = request.place
 
-        # ✅ 4. Generate GPT Summary
-        try:
-            gpt_output = generate_gpt_summary(report_data)
-            report_data["gptSummary"] = gpt_output
-        except Exception as e:
-            report_data["gptSummary"] = "AI Summary unavailable right now."
-            print("GPT Error:", e)
+        # Step 2: Generate astrology data
+        astro_data = generate_astrology_report(name, date, time, place)
 
-        # ✅ 5. Generate PDF if requested
-        if user_input.get("pdf", False):
-            pdf_path = generate_pdf(report_data, filename="Navadharma_Report.pdf")
-            return FileResponse(pdf_path, media_type="application/pdf", filename="Navadharma_Report.pdf")
+        # Step 3: Get GPT summary
+        gpt_summary = generate_gpt_summary(astro_data)
+        astro_data["gptSummary"] = gpt_summary
 
-        # ✅ 6. Return JSON response
-        return {
-            "message": "Prediction generated successfully.",
-            "data": report_data
-        }
+        # Step 4: Generate PDF if requested
+        if request.pdf:
+            filepath = generate_pdf(astro_data, filename="Navadharma_Report.pdf")
+            return FileResponse(filepath, media_type="application/pdf", filename="Navadharma_Report.pdf")
+
+        # Otherwise return JSON
+        return JSONResponse(content={
+            "astroData": astro_data,
+            "gptSummary": gpt_summary
+        })
 
     except Exception as e:
-        print("Error:", str(e))
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        print("❌ Error:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
