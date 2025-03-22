@@ -1,84 +1,75 @@
 from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from utils.pdf_generator import generate_pdf
-from utils.astro_logic import calculate_astrology_data
-from utils.transits import get_current_transits, compare_transits_with_natal
-from utils.gpt_summary import generate_gpt_summary
-import os
 from dotenv import load_dotenv
+import os
+
+from utils.pdf_generator import generate_pdf
+from utils.astro_logic import generate_full_kp_report
+from utils.numerology import get_numerology_summary
+from utils.transit import get_today_transits, get_gpt_transit_summary
+from utils.gpt_summary import gpt_summary
 
 load_dotenv()
 
+API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
 app = FastAPI()
 
-origins = ["*"]
+# Allow all origins for testing (limit this in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-NAVADHARMA_API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
-
 class KPRequest(BaseModel):
     name: str
-    date: str
-    time: str
+    date: str       # format YYYY-MM-DD
+    time: str       # format HH:MM
     place: str
-    pdf: bool = False
+    pdf: bool = True
     lang: str = "en"
 
-@app.get("/")
-def read_root():
-    return {"msg": "🌠 Navadharma Astrology API is Live"}
-
 @app.post("/predict-kp")
-async def predict_kp(request: Request, data: KPRequest, x_api_key: str = Header(None)):
-    if x_api_key != NAVADHARMA_API_KEY:
+async def predict_kp(req: KPRequest, x_api_key: str = Header(None)):
+    if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    try:
-        # Get Lat/Lon and TZ offset
-        from utils.geo import get_lat_lon_tz
-        lat, lon, tz_offset = get_lat_lon_tz(data.place)
+    # Main Astro Report
+    report_data = generate_full_kp_report(
+        name=req.name,
+        date=req.date,
+        time=req.time,
+        place=req.place,
+        lang=req.lang
+    )
 
-        # Compute Astrology Data
-        astro_data = calculate_astrology_data(
-            date=data.date, time=data.time, lat=lat, lon=lon, tz_offset=tz_offset
-        )
+    # Numerology
+    numerology = get_numerology_summary(req.name, req.date)
+    report_data["numerology"] = numerology
 
-        # Compute Transits
-        current_transits = get_current_transits(lat, lon)
-        transit_analysis = compare_transits_with_natal(current_transits, astro_data["planetData"])
-        gpt_transit_summary = generate_gpt_summary(transit_analysis, lang=data.lang)
+    # GPT Summary
+    summary = await gpt_summary(report_data, lang=req.lang)
+    report_data["gpt_summary"] = summary
 
-        # Generate GPT Summary of the Chart (optional)
-        gpt_chart_summary = generate_gpt_summary(astro_data["planetData"], lang=data.lang)
+    if req.pdf:
+        filepath = generate_pdf(report_data, filename="Navadharma_Report.pdf")
+        return FileResponse(filepath, media_type='application/pdf', filename="Navadharma_Report.pdf")
+    
+    return report_data
 
-        # Construct Report Data
-        report_data = {
-            "name": data.name,
-            "date": data.date,
-            "time": data.time,
-            "place": data.place,
-            "lagna": astro_data.get("lagna"),
-            "currentDasha": astro_data.get("dasha"),
-            "planetData": astro_data.get("planetData"),
-            "nakshatras": astro_data.get("nakshatras"),
-            "yogas": astro_data.get("yogas"),
-            "gptSummary": gpt_chart_summary,
-            "transits": transit_analysis,
-            "gptTransitSummary": gpt_transit_summary,
-        }
+@app.get("/daily-transit")
+async def daily_transit():
+    transits = get_today_transits()
+    gpt = await get_gpt_transit_summary(transits)
+    return {
+        "transits": transits,
+        "gpt_summary": gpt
+    }
 
-        if data.pdf:
-            pdf_path = generate_pdf(report_data, filename=f"{data.name}_Navadharma_Report.pdf")
-            return {"pdf_url": f"/{pdf_path}"}
-
-        return report_data
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/")
+async def root():
+    return {"status": "🌠 Navadharma Astro API is live"}
