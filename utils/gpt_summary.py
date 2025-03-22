@@ -1,48 +1,26 @@
-import os
 from openai import OpenAI
-from dotenv import load_dotenv
+import os
 
-load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# ✅ Load your OpenAI API key
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-def generate_gpt_summary(astro_data: dict) -> str:
-    """
-    Generates a natural-language summary of the astrology reading using GPT.
-    """
-
-    name = astro_data.get("name", "This person")
-    lagna = astro_data.get("lagna", "Unknown")
-    current_dasha = astro_data.get("currentDasha", {})
-    yogas = astro_data.get("yogas", [])
-    nakshatras = astro_data.get("nakshatras", {})
-
+def generate_gpt_summary(astro_data, language="English"):
     prompt = f"""
-You are a learned Vedic astrologer from the Navadharma school of thought.
-Provide a 6-8 line summary for the following person based on the data.
+You are a Vedic astrologer. Based on the following astrological data, write a short prediction summary in {language}.
+Make it spiritual, compassionate, and insightful. End with a blessing.
 
-Name: {name}
-Lagna: {lagna}
-Current Mahadasha: {current_dasha.get('mahadasha')}
-Antardasha: {current_dasha.get('antardasha')}
-Important Yogas: {", ".join(yogas) if yogas else "None"}
-Notable Nakshatras: {nakshatras}
+Astrological Data:
+{astro_data}
 
-Mention health, finance, spiritual growth, and overall energy in this period. Keep it concise and in professional tone.
+Respond only in {language}.
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=500
-        )
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are a wise Vedic astrologer."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.7,
+    )
 
-        return response.choices[0].message.content.strip()
-
-    except Exception as e:
-        print("GPT Error:", e)
-        return "Unable to generate AI summary at this time."
+    return response.choices[0].message.content
