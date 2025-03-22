@@ -1,11 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from utils.astro_logic import (
-    analyze_chart,
-    get_remedies,
-    calculate_dasha,
-    get_yogas,
-    get_nakshatra_details
+    analyze_chart, get_remedies, calculate_dasha,
+    get_yogas, get_nakshatra_details
 )
 from utils.transit import get_transits, get_daily_global_transits
 from utils.match_logic import analyze_compatibility
@@ -20,7 +17,7 @@ chat_manager = ChatSessionManager()
 # Models
 class UserInput(BaseModel):
     name: str
-    dob: str  # format: DD-MM-YYYY
+    dob: str  # format: YYYY-MM-DD
     tob: str  # format: HH:MM
     pob: str
     lang: str = "en"
@@ -34,7 +31,6 @@ class ChatInput(BaseModel):
     message: str
 
 # Routes
-
 @app.post("/predict-kp")
 async def predict_kp(user: UserInput):
     chart = analyze_chart(user.name, user.dob, user.tob, user.pob)
@@ -43,7 +39,6 @@ async def predict_kp(user: UserInput):
     nakshatra = get_nakshatra_details(chart)
     remedies = get_remedies(chart)
     gpt = gpt_summary(chart, lang=user.lang)
-
     pdf = generate_full_report(user.name, chart, dasha, yogas, nakshatra, remedies, gpt, lang=user.lang)
 
     return {
@@ -64,9 +59,9 @@ async def get_transit(user: UserInput):
 
 @app.get("/daily-transit")
 async def daily_transit():
-    transits = get_daily_global_transits()
-    gpt = gpt_summary(transits)
-    return {"transits": transits, "gpt": gpt}
+    data = get_daily_global_transits()
+    gpt = gpt_summary(data)
+    return {"transits": data, "gpt": gpt}
 
 @app.post("/numerology")
 async def numerology(user: UserInput):
