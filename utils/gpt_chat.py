@@ -4,8 +4,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# In-memory session storage (use Redis/db in production)
 chat_sessions = {}
 
 def chat_with_gpt(message: str, session_id: str, lang: str = "en", persona: str = "astrologer"):
@@ -14,12 +12,12 @@ def chat_with_gpt(message: str, session_id: str, lang: str = "en", persona: str 
 
     system_prompts = {
         "astrologer": {
-            "en": "You are a wise Vedic astrologer. Provide accurate and empathetic responses.",
-            "hi": "आप एक अनुभवी वैदिक ज्योतिषी हैं। सहानुभूति और ज्ञान से उत्तर दें।",
-            "ta": "நீங்கள் ஒரு ஞானமிக்க வேத ஜோதிடர். தெளிவாக பதிலளிக்கவும்.",
-            "te": "మీరు జ్ఞానమయిన జ్యోతిష్యుడు. తెలుగులో స్పష్టంగా సమాధానమివ్వండి.",
-            "kn": "ನೀವು ಜ್ಞಾನಿಯಾದ ವೇದ ಜ್ಯೋತಿಷ್ಯರಾಗಿದ್ದೀರಿ. ಸ್ಪಷ್ಟವಾಗಿ ಉತ್ತರಿಸಿ.",
-            "ml": "നീങ്ങെ ഒരു പ്രഗത്ഭനായ ജ്യോതിഷിയാണ്. മനോഹരമായി മറുപടി നൽകുക."
+            "en": "You are a wise Vedic astrologer...",
+            "hi": "आप एक अनुभवी वैदिक ज्योतिषी हैं...",
+            "ta": "நீங்கள் ஒரு ஞானமிக்க வேத ஜோதிடர்...",
+            "te": "మీరు జ్ఞానమయిన జ్యోతిష్యుడు...",
+            "kn": "ನೀವು ಜ್ಞಾನಿಯಾದ ಜ್ಯೋತಿಷ್ಯ...",
+            "ml": "നീങ്ങെ ഒരു പ്രഗത്ഭനായ ജ്യോതിഷിയാണ്..."
         }
     }
 
@@ -29,7 +27,6 @@ def chat_with_gpt(message: str, session_id: str, lang: str = "en", persona: str 
     }
 
     chat_sessions[session_id].append({"role": "user", "content": message})
-
     messages = [system] + chat_sessions[session_id][-10:]
 
     chat = client.chat.completions.create(
