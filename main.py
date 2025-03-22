@@ -1,61 +1,88 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse, FileResponse
+from pydantic import BaseModel
+from typing import Optional
 from utils.pdf_generator import generate_pdf
+from utils.astro_logic import (
+    get_julian_day, get_planet_positions,
+    get_lagna, get_nakshatra, detect_yogas, get_timezone
+)
+from datetime import datetime
+import os
 
 app = FastAPI()
 
-@app.get("/")
-def read_root():
-    return {"message": "Navadharma API is running 🔮"}
+
+class BirthData(BaseModel):
+    date: str  # e.g., '1990-03-21'
+    time: str  # e.g., '05:45'
+    place: str  # e.g., 'Mumbai, India'
+    lat: float
+    lon: float
+    pdf: Optional[bool] = False
+
 
 @app.post("/predict-kp")
-async def predict_kp(request: Request):
-    req = await request.json()
+async def predict_kp(req: BirthData):
+    try:
+        dt_str = f"{req.date} {req.time}"
+        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
 
-    # You can replace these with real calculations later
-    data = {
-        "date": req.get("date", "1990-01-01"),
-        "time": req.get("time", "05:45"),
-        "place": req.get("place", "Mumbai, India"),
-        "lagna": "Aries",
-        "currentDasha": {
+        tz = get_timezone(req.place, req.lat, req.lon)
+        jd = get_julian_day(dt, tz)
+
+        planets = get_planet_positions(jd, req.lat, req.lon)
+        moon_long = planets.get("Moon", 0)
+        lagna = get_lagna(jd, req.lat, req.lon)
+        nakshatra = get_nakshatra(moon_long)
+        yogas = detect_yogas(planets)
+
+        # Stub Dasha logic (to be replaced with real logic soon)
+        dasha = {
             "mahadasha": "Venus",
             "antardasha": "Saturn",
             "period": "2023-08-01 to 2026-05-15"
-        },
-        "predictions": {
+        }
+
+        predictions = {
             "marriage": {
                 "likely": True,
                 "window": "2024–2025",
-                "explanation": "Venus is sub-lord of 7th house and active in Dasha"
+                "explanation": f"Moon in {nakshatra}, Yogas: {', '.join(yogas)}",
+                "hidden": True
             },
             "career": {
                 "change": False,
-                "explanation": "10th lord is stable and unaffected by transit"
+                "explanation": "10th lord stable",
+                "hidden": True
             },
             "health": {
+                "summary": "Normal vitality, avoid stress during Mars periods",
                 "hidden": True
-            },
-            "education": {
-                "explanation": "Strong Mercury but under aspect of Saturn",
-                "hidden": True
-            },
-            "spirituality": {
-                "explanation": "Jupiter in 12th house enhances spiritual interests"
             }
-        },
-        "yogas": ["Gajakesari Yoga", "Mangal Dosha", "Adhi Yoga"],
-        "remedies": [
-            "Chant Hanuman Chalisa on Tuesdays",
-            "Donate yellow clothes on Thursdays",
-            "Recite Vishnu Sahasranama daily"
-        ]
-    }
+        }
 
-    # If user requests PDF
-    if req.get("pdf", False):
-        filename = "Navadharma_Report.pdf"
-        pdf_path = generate_pdf(data, filename=filename)
-        return FileResponse(pdf_path, media_type='application/pdf', filename=filename)
+        data = {
+            "date": req.date,
+            "time": req.time,
+            "place": req.place,
+            "lagna": f"Lagna Sign {lagna}",
+            "nakshatra": nakshatra,
+            "currentDasha": dasha,
+            "predictions": predictions,
+            "yogas": yogas,
+            "remedies": [
+                "Recite Vishnu Sahasranama on Fridays",
+                "Donate white items on Fridays"
+            ]
+        }
 
-    return {"status": "success", "data": data}
+        # If PDF requested
+        if req.pdf:
+            pdf_path = generate_pdf(data, filename="Navadharma_Report.pdf")
+            return FileResponse(pdf_path, media_type="application/pdf", filename="Navadharma_Report.pdf")
+
+        return JSONResponse(content=data)
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
