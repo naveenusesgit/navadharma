@@ -1,7 +1,13 @@
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI
 from pydantic import BaseModel
-from utils.astro_logic import analyze_chart, get_remedies, calculate_dasha, get_yogas, get_nakshatra_details
-from utils.transit import get_transits, get_daily_transit
+from utils.astro_logic import (
+    analyze_chart,
+    get_remedies,
+    calculate_dasha,
+    get_yogas,
+    get_nakshatra_details
+)
+from utils.transit import get_transits, get_daily_global_transits
 from utils.match_logic import analyze_compatibility
 from utils.numerology import calculate_numerology
 from utils.pdf_generator import generate_full_report, generate_match_report
@@ -57,14 +63,10 @@ async def get_transit(user: UserInput):
     return {"transits": transits, "gpt": gpt}
 
 @app.get("/daily-transit")
-async def daily_transit(lang: str = Query(default="en", description="Language code")):
-    data = get_daily_transit()
-    gpt = gpt_summary(data, lang=lang)
-    return {
-        "date": data["date"],
-        "transits": data["transits"],
-        "gpt": gpt
-    }
+async def daily_transit():
+    transits = get_daily_global_transits()
+    gpt = gpt_summary(transits)
+    return {"transits": transits, "gpt": gpt}
 
 @app.post("/numerology")
 async def numerology(user: UserInput):
