@@ -21,6 +21,9 @@ def generate_pdf(data: dict, filename="report.pdf"):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_fill_color(245, 245, 245)
+
     def section_title(title):
         pdf.set_font("Helvetica", "B", 13)
         pdf.set_text_color(0)
@@ -28,33 +31,33 @@ def generate_pdf(data: dict, filename="report.pdf"):
         pdf.set_font("Helvetica", "", 12)
         pdf.set_text_color(30, 30, 30)
 
-    # Birth Details
-    section_title("📅 Birth Details")
+    # ✨ Basic Info
+    section_title("Birth Details")
     pdf.cell(0, 10, f"Date: {data.get('date', '—')}", ln=True)
     pdf.cell(0, 10, f"Time: {data.get('time', '—')}", ln=True)
     pdf.cell(0, 10, f"Place: {data.get('place', '—')}", ln=True)
     pdf.ln(5)
 
-    # Charts
-    for chart, label in [("birth_chart.png", "🌀 Birth Chart"), ("kp_chart.png", "🧭 KP Chart")]:
-        chart_path = f"static/{chart}"
-        if os.path.exists(chart_path):
-            section_title(label)
-            pdf.image(chart_path, w=100)
-            pdf.ln(5)
+    # 🧠 GPT Summary
+    if data.get("gpt_summary"):
+        section_title("Astrologer's Insights")
+        pdf.multi_cell(0, 8, data["gpt_summary"])
+        pdf.ln(5)
 
-    # Lagna & Dasha
-    section_title("🌠 Astrological Snapshot")
+    # 🌙 Lagna & Dasha
+    section_title("Current Astrological Snapshot")
     lagna = data.get("lagna", "—")
     dasha = data.get("currentDasha", {})
     pdf.cell(0, 10, f"Lagna: {lagna}", ln=True)
-    pdf.cell(0, 10, f"Mahadasha: {dasha.get('mahadasha', '—')}, Antardasha: {dasha.get('antardasha', '—')}", ln=True)
+    pdf.cell(0, 10, f"Mahadasha: {dasha.get('mahadasha', '—')} | Antardasha: {dasha.get('antardasha', '—')}", ln=True)
     pdf.cell(0, 10, f"Dasha Period: {dasha.get('period', '—')}", ln=True)
     pdf.ln(5)
 
-    # Predictions
-    section_title("🔮 Predictions")
-    for topic, content in data.get("predictions", {}).items():
+    # 🔮 Predictions
+    section_title("Predictions")
+    predictions = data.get("predictions", {})
+
+    for topic, content in predictions.items():
         pdf.set_font("Helvetica", "B", 12)
         pdf.cell(0, 8, topic.capitalize(), ln=True)
         pdf.set_font("Helvetica", "", 12)
@@ -65,33 +68,19 @@ def generate_pdf(data: dict, filename="report.pdf"):
                     pdf.multi_cell(0, 8, f"{k.capitalize()}: {v}")
         if content.get("hidden", False):
             pdf.set_text_color(150, 0, 0)
-            pdf.cell(0, 8, "🔒 Full reading available in Premium Report", ln=True)
+            pdf.cell(0, 8, "Full reading available in the Premium Navadharma Report", ln=True)
             pdf.set_text_color(0)
         pdf.ln(4)
 
-    # Yogas
-    yogas = data.get("yogas", [])
-    if yogas:
-        section_title("🧘 Significant Yogas")
-        for yoga in yogas:
-            pdf.cell(0, 8, f"• {yoga}", ln=True)
-        pdf.ln(4)
-
-    # Remedies
-    remedies = data.get("remedies", [])
-    if remedies:
-        section_title("🕉 Remedies Suggested")
-        for r in remedies:
-            pdf.cell(0, 8, f"✓ {r}", ln=True)
-        pdf.ln(4)
-
-    # QR Code
+    # 📎 QR Code
     qr_data = "https://navadharma.com"
+    qr = qrcode.make(qr_data)
     qr_path = "static/nav_qr.png"
-    qrcode.make(qr_data).save(qr_path)
+    qr.save(qr_path)
     pdf.image(qr_path, x=160, y=pdf.get_y(), w=30)
+    pdf.ln(30)
 
     output_path = f"static/{filename}"
     pdf.output(output_path, "F")
     return output_path
-
+    
