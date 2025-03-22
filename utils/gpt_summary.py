@@ -1,39 +1,64 @@
+import openai
 import os
-from openai import OpenAI
 from dotenv import load_dotenv
+from utils.language_utils import translate_output
 
 load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+def gpt_summary(data, lang="en"):
+    # Compose summary from structured chart data
+    chart_part = ""
+    if "planets" in data:
+        chart_part += "Here are the planetary positions:\n"
+        for planet, details in data["planets"].items():
+            chart_part += f"{planet} in sign {details.get('sign', '?')} at degree {details.get('degree', '?')}\n"
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+    # Add Yoga summaries
+    yoga_part = ""
+    if "yogas" in data and data["yogas"]:
+        yoga_part += "\nImportant Yogas:\n"
+        for yoga in data["yogas"]:
+            yoga_part += f"- {yoga.get('name', '')}: {yoga.get('summary', '')}\n"
 
-def generate_gpt_summary(astro_summary: str, language: str = "English") -> str:
-    if not astro_summary:
-        return "No astrological data provided."
+    # Add Remedy summaries
+    remedy_part = ""
+    if "remedies" in data and data["remedies"]:
+        remedy_part += "\nSuggested Remedies:\n"
+        for remedy in data["remedies"]:
+            remedy_part += f"- {remedy.get('planet', '')}: {remedy.get('summary', '')}\n"
+
+    # Add Transit interpretation (if provided)
+    if "transits" in data:
+        chart_part += "\nTransit Overview:\n"
+        for planet, transit in data["transits"].items():
+            chart_part += f"{planet} transiting {transit.get('sign')} in house {transit.get('house')}.\n"
 
     prompt = f"""
-    Based on the following astrological interpretation:
+    Provide a short summary interpretation of this chart for the user, covering yogas and remedies if available.
+    Keep the tone uplifting and simple to understand for general audience.
 
-    \"\"\"
-    {astro_summary}
-    \"\"\"
-
-    Write a personalized summary in {language}. 
-    Keep it warm, insightful, and professional.
-    Limit to 8-10 sentences. Do not repeat text.
+    ---
+    {chart_part}
+    {yoga_part}
+    {remedy_part}
     """
 
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are a wise and warm Indian astrologer."},
+                {"role": "system", "content": "You're a Vedic Astrology assistant."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=500
+            max_tokens=400
         )
-        return response.choices[0].message.content.strip()
+        english_summary = response.choices[0].message.content.strip()
+
+        # Translate if needed
+        translated = translate_output(english_summary, lang)
+        return translated
+
     except Exception as e:
-        return f"Error generating GPT summary: {e}"
+        return f"Error generating summary: {str(e)}"
