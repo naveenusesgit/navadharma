@@ -1,45 +1,56 @@
-# utils/match_logic.py
+from datetime import datetime
+from utils.astro_logic import calculate_dasha
 
-from utils.astro_logic import get_dasha_info, calculate_astro_details
+def calculate_ashtakoot_score(name1, dob1, name2, dob2):
+    """
+    Dummy Ashtakoot matching logic — you can replace this with real calculations.
+    For now, returns random-like but structured score based on name length and dob digits.
+    """
+    score = (len(name1) + len(name2)) % 9 + (int(dob1[-2:]) + int(dob2[-2:])) % 10
+    return min(score, 36)
 
-# Dummy nakshatra-guna mapping
-GUNA_MAP = {
-    'Ashwini': 'Deva', 'Bharani': 'Rakshasa', 'Krittika': 'Manushya',
-    # ... fill for all 27 nakshatras
-}
+def compare_dashas(dasha1, dasha2):
+    if dasha1.get("mahadasha") == dasha2.get("mahadasha"):
+        return "✅ Both partners are under the same Mahadasha — karmic alignment is strong."
+    else:
+        return "⚠️ Partners are in different Mahadashas — understanding and patience will be key."
 
-GUNA_SCORE = {
-    ('Deva', 'Deva'): 6, ('Deva', 'Manushya'): 5, ('Deva', 'Rakshasa'): 1,
-    ('Manushya', 'Manushya'): 6, ('Manushya', 'Rakshasa'): 3,
-    ('Rakshasa', 'Rakshasa'): 6
-}
+def get_match_remedies(score, dasha_msg):
+    remedies = []
 
-def calculate_ashtakoot_score(nak1, nak2):
-    guna1 = GUNA_MAP.get(nak1, 'Manushya')
-    guna2 = GUNA_MAP.get(nak2, 'Manushya')
-    return GUNA_SCORE.get((guna1, guna2), GUNA_SCORE.get((guna2, guna1), 0))
+    if score < 18:
+        remedies.append("🪔 Perform Navagraha Shanti or Graha Shanti puja to balance cosmic energies.")
+        remedies.append("🌸 Offer white flowers to the Moon and chant 'Om Chandraya Namah' on Mondays.")
 
-def check_dasha_compatibility(dasha1, dasha2):
-    if dasha1['mahadasha'] == dasha2['mahadasha']:
-        return "Both in same Mahadasha — similar life themes"
-    if dasha1['antardasha'] == dasha2['antardasha']:
-        return "Matching Antardasha — emotional synchronicity"
-    return "Different Dashas — can indicate karmic balancing"
+    if "Different" in dasha_msg:
+        remedies.append("📿 Meditate together during sunrise to harmonize emotional cycles.")
+        remedies.append("🕉️ Recite Vishnu Sahasranama for mutual understanding.")
 
-def match_compatibility(data1, data2):
-    details1 = calculate_astro_details(data1)
-    details2 = calculate_astro_details(data2)
+    if not remedies:
+        remedies.append("💖 Your stars align well! Keep communication open and spiritual practices strong.")
 
-    nak1 = details1.get('nakshatra', 'Ashwini')
-    nak2 = details2.get('nakshatra', 'Ashwini')
+    return remedies
 
-    ashta_score = calculate_ashtakoot_score(nak1, nak2)
-    dasha_msg = check_dasha_compatibility(details1.get('currentDasha', {}), details2.get('currentDasha', {}))
+def match_compatibility(p1, p2):
+    name1 = p1.get("name", "Partner 1")
+    name2 = p2.get("name", "Partner 2")
+    dob1 = p1.get("date")
+    dob2 = p2.get("date")
+
+    ashta_score = calculate_ashtakoot_score(name1, dob1, name2, dob2)
+
+    # Calculate Dasha
+    dasha1 = calculate_dasha(p1.get("date"), p1.get("time"), p1.get("place"))
+    dasha2 = calculate_dasha(p2.get("date"), p2.get("time"), p2.get("place"))
+    dasha_msg = compare_dashas(dasha1, dasha2)
+
+    remedies = get_match_remedies(ashta_score, dasha_msg)
 
     return {
         "ashtakootScore": ashta_score,
         "ashtakootOutOf": 36,
         "dashaCompatibility": dasha_msg,
-        "partner1": details1,
-        "partner2": details2
+        "partner1": {"name": name1, "dasha": dasha1},
+        "partner2": {"name": name2, "dasha": dasha2},
+        "remedies": remedies
     }
