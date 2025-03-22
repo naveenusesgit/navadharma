@@ -1,7 +1,7 @@
 from fpdf import FPDF
 import os
-from datetime import datetime
 import qrcode
+from datetime import datetime
 
 class PDF(FPDF):
     def header(self):
@@ -21,72 +21,78 @@ def generate_pdf(data: dict, filename="report.pdf"):
     pdf = PDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
-
     pdf.set_font("Helvetica", "", 12)
-    pdf.set_fill_color(245, 245, 245)
 
     def section_title(title):
-        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_text_color(40, 40, 100)
+        pdf.cell(0, 10, f"🟣 {title}", ln=True)
         pdf.set_text_color(0)
-        pdf.cell(0, 10, title, ln=True)
         pdf.set_font("Helvetica", "", 12)
-        pdf.set_text_color(30, 30, 30)
 
-    # Basic Info
-    section_title("Birth Details")
+    # Birth Info
+    section_title("🧬 Birth Details")
     pdf.cell(0, 10, f"Name: {data.get('name', '—')}", ln=True)
     pdf.cell(0, 10, f"Date: {data.get('date', '—')}", ln=True)
     pdf.cell(0, 10, f"Time: {data.get('time', '—')}", ln=True)
     pdf.cell(0, 10, f"Place: {data.get('place', '—')}", ln=True)
     pdf.ln(5)
 
-    # Chart Images
-    if os.path.exists("static/birth_chart.png"):
-        section_title("Birth Chart")
-        pdf.image("static/birth_chart.png", w=100)
-        pdf.ln(5)
-
-    if os.path.exists("static/kp_chart.png"):
-        section_title("KP Chart")
-        pdf.image("static/kp_chart.png", w=100)
-        pdf.ln(5)
-
-    # Planet Positions
-    section_title("Planetary Positions")
-    planets = data.get("planetaryPositions", [])
-    for planet in planets:
-        pdf.cell(0, 8, f"{planet['name']}: {planet['sign']} ({planet['degree']:.2f}°)", ln=True)
+    # Planetary Positions
+    section_title("🪐 Planetary Positions")
+    for planet, pos in data.get("planetData", {}).items():
+        pdf.cell(0, 10, f"{planet}: {pos}", ln=True)
     pdf.ln(5)
 
-    # Dashas
-    section_title("Dasha Periods")
-    dasha = data.get("dasha", {})
-    pdf.cell(0, 10, f"Mahadasha: {dasha.get('mahadasha', '—')}", ln=True)
-    pdf.cell(0, 10, f"Antardasha: {dasha.get('antardasha', '—')}", ln=True)
-    pdf.cell(0, 10, f"Period: {dasha.get('period', '—')}", ln=True)
+    # Nakshatras
+    section_title("🌌 Nakshatras")
+    for planet, nak in data.get("nakshatras", {}).items():
+        pdf.cell(0, 10, f"{planet}: {nak}", ln=True)
+    pdf.ln(5)
+
+    # Dasha
+    section_title("🕉 Current Dasha Period")
+    d = data.get("currentDasha", {})
+    pdf.cell(0, 10, f"Mahadasha: {d.get('mahadasha')} | Antardasha: {d.get('antardasha')}", ln=True)
+    pdf.cell(0, 10, f"Period: {d.get('period')}", ln=True)
     pdf.ln(5)
 
     # Yogas
-    section_title("Yogas Identified")
-    for yoga in data.get("yogas", []):
-        pdf.multi_cell(0, 8, f"• {yoga}")
+    section_title("📿 Yogas & Combinations")
+    yogas = data.get("yogas", [])
+    if yogas:
+        for yoga in yogas:
+            pdf.multi_cell(0, 8, f"🔹 {yoga}")
+    else:
+        pdf.cell(0, 10, "No major yogas detected.", ln=True)
     pdf.ln(5)
 
     # GPT Summary
-    if "gptSummary" in data:
-        section_title("GPT Summary")
-        pdf.multi_cell(0, 8, data["gptSummary"])
-        pdf.ln(5)
+    section_title("💬 GPT Prediction Summary")
+    summary = data.get("gptSummary", "")
+    pdf.set_font("Helvetica", "I", 12)
+    pdf.multi_cell(0, 8, summary)
+    pdf.set_font("Helvetica", "", 12)
+    pdf.ln(5)
+
+    # Divisional Charts
+    section_title("📊 Divisional Charts")
+    for chart_type, chart_path in data.get("divisionalCharts", {}).items():
+        if os.path.exists(chart_path):
+            pdf.cell(0, 10, f"{chart_type} Chart", ln=True)
+            pdf.image(chart_path, w=100)
+            pdf.ln(5)
 
     # QR Code
+    section_title("🔗 Scan for More")
     qr_data = "https://navadharma.com"
-    qr = qrcode.make(qr_data)
+    qr_img = qrcode.make(qr_data)
     qr_path = "static/nav_qr.png"
-    qr.save(qr_path)
+    qr_img.save(qr_path)
     pdf.image(qr_path, x=160, y=pdf.get_y(), w=30)
     pdf.ln(30)
 
-    # Save
+    # Save PDF
     output_path = f"static/{filename}"
     pdf.output(output_path, "F")
     return output_path
