@@ -9,3 +9,4 @@ pyswisseph
 matplotlib
 pytz
 timezonefinder
+openai
