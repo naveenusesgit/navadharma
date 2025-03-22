@@ -1,93 +1,102 @@
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 
-from utils.pdf_generator import generate_pdf
-from utils.astro_logic import get_astrology_data
+from utils.astro_engine import compute_full_chart
+from utils.astro_logic import detect_yogas, get_nakshatras, get_remedies
 from utils.gpt_summary import generate_gpt_summary
-from utils.numerology import get_numerology_profile
+from utils.pdf_generator import generate_pdf
 from utils.transit import get_current_transits
-from utils.compatibility import generate_match_report
-from utils.match_pdf import generate_match_pdf
+from utils.match_logic import compute_match_score
+from utils.email_utils import send_report_email
 
 load_dotenv()
 
-API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
-
-app = FastAPI(title="Navadharma Astrology API")
-
+app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"]
 )
 
-class KPRequest(BaseModel):
+NAVADHARMA_API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
+
+class KPInput(BaseModel):
+    name: str
     date: str
     time: str
     place: str
     language: str = "en"
     pdf: bool = False
-    includeCharts: bool = True
-    chartStyle: str = "south"
+    paid: bool = False
+    email: str | None = None
+    partner: dict | None = None
 
-class MatchRequest(BaseModel):
-    boy: dict
-    girl: dict
-    language: str = "en"
-    pdf: bool = False
-
-def verify_api_key(request: Request):
-    client_key = request.headers.get("X-API-Key")
-    if client_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-
-@app.get("/")
-def home():
-    return {"status": "Navadharma Astrology API is live 🌠"}
 
 @app.post("/predict-kp")
-def predict_kp(data: KPRequest, request: Request = Depends(verify_api_key)):
-    astro_data = get_astrology_data(data.date, data.time, data.place, chart_style=data.chartStyle)
-    numerology = get_numerology_profile(data.date, data.time)
-    gpt_summary = generate_gpt_summary(astro_data, numerology, lang=data.language)
-    transit_data = get_current_transits()
+async def predict_kp(req: Request, input: KPInput):
+    api_key = req.headers.get("x-api-key")
+    if api_key != NAVADHARMA_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
 
-    full_data = {
-        **astro_data,
-        "numerology": numerology,
-        "gptSummary": gpt_summary,
-        "transits": transit_data,
-        "language": data.language,
-        "date": data.date,
-        "time": data.time,
-        "place": data.place,
+    # Step 1: Core Chart Data
+    full_chart = compute_full_chart(input.date, input.time, input.place)
+
+    # Step 2: Yogas, Nakshatra, Dasha
+    yogas = detect_yogas(full_chart["planet_positions"], full_chart["moon"], full_chart["lagna_sign"])
+    nakshatras = get_nakshatras(full_chart["planet_longitudes"], full_chart["nakshatra_list"])
+    remedies = get_remedies(yogas=yogas, dashas=[full_chart["dasha"]], nakshatras=list(nakshatras.values()), language=input.language)
+
+    # Step 3: GPT Summary
+    gpt_summary = generate_gpt_summary(full_chart, yogas, nakshatras, language=input.language)
+
+    # Step 4: Transit
+    transit = get_current_transits()
+
+    # Step 5: Match-making (optional)
+    match_score = None
+    match_summary = None
+    if input.partner:
+        match_score, match_summary = compute_match_score(full_chart, input.partner)
+
+    # Step 6: Build data
+    result = {
+        "name": input.name,
+        "date": input.date,
+        "time": input.time,
+        "place": input.place,
+        "planet_positions": full_chart["planet_positions"],
+        "nakshatras": nakshatras,
+        "yogas": yogas,
+        "dasha": full_chart["dasha"],
+        "gpt_summary": gpt_summary,
+        "transit": transit,
+        "remedies": remedies,
+        "match_score": match_score,
+        "match_summary": match_summary
     }
 
-    response = {"data": full_data}
+    # Step 7: PDF
+    if input.pdf:
+        filename = f"{input.name.replace(' ', '_')}_Navadharma_Report.pdf"
+        path = generate_pdf(result, filename=filename, remedies=remedies, language=input.language)
+        result["pdf_path"] = f"/static/{filename}"
 
-    if data.pdf:
-        filepath = generate_pdf(full_data)
-        response["pdf_url"] = f"/{filepath}"
+    # Step 8: Email report (paid only)
+    if input.paid and input.email:
+        try:
+            send_report_email(input.email, path)
+            result["email_status"] = "sent"
+        except Exception as e:
+            result["email_status"] = f"failed: {str(e)}"
 
-    return response
+    return result
 
-@app.post("/match-compatibility")
-def match_compatibility(data: MatchRequest, request: Request = Depends(verify_api_key)):
-    report = generate_match_report(data.boy, data.girl, data.language)
-
-    response = {"compatibility": report}
-
-    if data.pdf:
-        pdf_path = generate_match_pdf(report, data.boy, data.girl)
-        response["pdf_url"] = f"/{pdf_path}"
-
-    return response
 
 @app.get("/daily-transit")
-def daily_transit(request: Request = Depends(verify_api_key)):
-    return {"transits": get_current_transits()}
+def daily_transit():
+    return {
+        "transit": get_current_transits()
+    }
