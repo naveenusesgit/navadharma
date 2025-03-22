@@ -6,3 +6,4 @@ qrcode
 python-dotenv
 geopy
 pyswisseph
+matplotlib
