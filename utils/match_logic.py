@@ -1,56 +1,71 @@
-from datetime import datetime
-from utils.astro_logic import calculate_dasha
+from utils.astro_logic import get_planet_positions, calculate_dasha, get_nakshatra
+import swisseph as swe
+import datetime
 
-def calculate_ashtakoot_score(name1, dob1, name2, dob2):
-    """
-    Dummy Ashtakoot matching logic — you can replace this with real calculations.
-    For now, returns random-like but structured score based on name length and dob digits.
-    """
-    score = (len(name1) + len(name2)) % 9 + (int(dob1[-2:]) + int(dob2[-2:])) % 10
-    return min(score, 36)
+# Simplified Ashtakoot points system (scale: max 36)
+NAKSHATRA_COMPATIBILITY = {
+    ("Ashwini", "Bharani"): 5,
+    ("Rohini", "Mrigashira"): 5,
+    ("Pushya", "Ashlesha"): 4,
+    ("Swati", "Chitra"): 5,
+    ("Revati", "Uttara Bhadrapada"): 5,
+    # Add more nakshatra pair scores
+}
 
-def compare_dashas(dasha1, dasha2):
-    if dasha1.get("mahadasha") == dasha2.get("mahadasha"):
-        return "✅ Both partners are under the same Mahadasha — karmic alignment is strong."
+def get_jd(date_str, time_str):
+    dt = datetime.datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    return swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60.0)
+
+def get_nakshatra_from_chart(jd, lat, lon):
+    moon_lon, _, _ = swe.calc_ut(jd, swe.MOON)
+    return get_nakshatra(moon_lon)
+
+def calculate_ashtakoot_score(n1, n2):
+    if (n1, n2) in NAKSHATRA_COMPATIBILITY:
+        return NAKSHATRA_COMPATIBILITY[(n1, n2)]
+    elif (n2, n1) in NAKSHATRA_COMPATIBILITY:
+        return NAKSHATRA_COMPATIBILITY[(n2, n1)]
     else:
-        return "⚠️ Partners are in different Mahadashas — understanding and patience will be key."
+        return 2  # default score if pair not listed
 
-def get_match_remedies(score, dasha_msg):
-    remedies = []
+def analyze_compatibility(person1, person2):
+    jd1 = get_jd(person1["date"], person1["time"])
+    jd2 = get_jd(person2["date"], person2["time"])
 
-    if score < 18:
-        remedies.append("🪔 Perform Navagraha Shanti or Graha Shanti puja to balance cosmic energies.")
-        remedies.append("🌸 Offer white flowers to the Moon and chant 'Om Chandraya Namah' on Mondays.")
+    lat1, lon1 = person1["lat"], person1["lon"]
+    lat2, lon2 = person2["lat"], person2["lon"]
 
-    if "Different" in dasha_msg:
-        remedies.append("📿 Meditate together during sunrise to harmonize emotional cycles.")
-        remedies.append("🕉️ Recite Vishnu Sahasranama for mutual understanding.")
+    # Get Nakshatra
+    n1 = get_nakshatra_from_chart(jd1, lat1, lon1)
+    n2 = get_nakshatra_from_chart(jd2, lat2, lon2)
 
-    if not remedies:
-        remedies.append("💖 Your stars align well! Keep communication open and spiritual practices strong.")
+    # Ashtakoot score (0–36 scale)
+    ashtakoot_score = calculate_ashtakoot_score(n1, n2) * 4  # convert 0–9 to 0–36
 
-    return remedies
+    # Dasha analysis
+    dasha1 = calculate_dasha(jd1)
+    dasha2 = calculate_dasha(jd2)
 
-def match_compatibility(p1, p2):
-    name1 = p1.get("name", "Partner 1")
-    name2 = p2.get("name", "Partner 2")
-    dob1 = p1.get("date")
-    dob2 = p2.get("date")
+    dasha_compatibility = (
+        dasha1["mahadasha"] == dasha2["mahadasha"] or
+        dasha1["antardasha"] == dasha2["antardasha"]
+    )
 
-    ashta_score = calculate_ashtakoot_score(name1, dob1, name2, dob2)
-
-    # Calculate Dasha
-    dasha1 = calculate_dasha(p1.get("date"), p1.get("time"), p1.get("place"))
-    dasha2 = calculate_dasha(p2.get("date"), p2.get("time"), p2.get("place"))
-    dasha_msg = compare_dashas(dasha1, dasha2)
-
-    remedies = get_match_remedies(ashta_score, dasha_msg)
-
-    return {
-        "ashtakootScore": ashta_score,
-        "ashtakootOutOf": 36,
-        "dashaCompatibility": dasha_msg,
-        "partner1": {"name": name1, "dasha": dasha1},
-        "partner2": {"name": name2, "dasha": dasha2},
-        "remedies": remedies
+    summary = {
+        "ashtakootScore": ashtakoot_score,
+        "nakshatra1": n1,
+        "nakshatra2": n2,
+        "dasha1": dasha1,
+        "dasha2": dasha2,
+        "dashaMatch": dasha_compatibility,
     }
+
+    # Basic Remedies
+    remedies = []
+    if ashtakoot_score < 20:
+        remedies.append("Consider chanting Parvati-Parameshwara mantras to strengthen bond.")
+    if not dasha_compatibility:
+        remedies.append("Perform Navagraha puja for better dasha alignment.")
+
+    summary["remedies"] = remedies
+    return summary
