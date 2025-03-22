@@ -15,7 +15,6 @@ def analyze_chart(name, dob, tob, pob):
     return chart_data
 
 def calculate_dasha(chart_data):
-    # Mock dasha logic for now
     return {
         "current": {
             "planet": "Saturn",
@@ -51,27 +50,44 @@ def get_yogas(chart_data):
 
     # Gajakesari Yoga
     if 'Moon' in planets and 'Jupiter' in planets:
-        moon_house = planets['Moon']['house']
-        jupiter_house = planets['Jupiter']['house']
-        if moon_house in [1, 4, 7, 10] and jupiter_house in [1, 4, 7, 10]:
+        if planets['Moon']['house'] in [1, 4, 7, 10] and planets['Jupiter']['house'] in [1, 4, 7, 10]:
             yogas.append({
                 "name": "Gajakesari Yoga",
-                "description": "Formed when Jupiter and Moon are in kendra (1st, 4th, 7th, or 10th house) from Lagna. Brings wisdom, fame, and prosperity.",
+                "description": "Jupiter and Moon in kendra houses. Brings wisdom, respect and leadership.",
                 "type": "Raja Yoga",
-                "summary": "Gajakesari Yoga: Jupiter and Moon in Kendra bring wisdom and prosperity."
+                "summary": "Gajakesari Yoga gives mental strength and reputation."
             })
 
     # Chandra-Mangal Yoga
-    if 'Moon' in planets and 'Mars' in planets:
-        moon_sign = planets['Moon']['sign']
-        mars_sign = planets['Mars']['sign']
-        if moon_sign == mars_sign:
-            yogas.append({
-                "name": "Chandra-Mangal Yoga",
-                "description": "Moon and Mars conjunction or mutual aspect forms this yoga, giving financial acumen and aggressive success.",
-                "type": "Dhana Yoga",
-                "summary": "Chandra-Mangal Yoga: Moon & Mars in same sign boosts finance and drive."
-            })
+    if planets.get("Moon", {}).get("sign") == planets.get("Mars", {}).get("sign"):
+        yogas.append({
+            "name": "Chandra-Mangal Yoga",
+            "description": "Moon and Mars in same sign. Indicates business success and courage.",
+            "type": "Dhana Yoga",
+            "summary": "Chandra-Mangal Yoga gives wealth and enterprise."
+        })
+
+    # Budha-Aditya Yoga
+    if planets.get("Sun", {}).get("sign") == planets.get("Mercury", {}).get("sign"):
+        yogas.append({
+            "name": "Budha-Aditya Yoga",
+            "description": "Sun and Mercury in same sign. Brings intellect, communication power, and leadership.",
+            "type": "Raja Yoga",
+            "summary": "Budha-Aditya Yoga: intelligence meets leadership."
+        })
+
+    # Vipareeta Raja Yoga
+    for house in [6, 8, 12]:
+        lord = lords.get(house, {}).get("lord")
+        if lord:
+            lord_house = planets.get(lord, {}).get("house")
+            if lord_house in [6, 8, 12]:
+                yogas.append({
+                    "name": "Vipareeta Raja Yoga",
+                    "description": f"Lord of {house} house is placed in a dusthana. Brings unexpected rise after adversity.",
+                    "type": "Raja Yoga",
+                    "summary": f"Vipareeta Raja Yoga: Triumph through trials. House {house} lord in dusthana."
+                })
 
     return yogas
 
@@ -85,13 +101,9 @@ def get_remedies(chart_data):
     if moon.get("afflicted", False):
         remedies.append({
             "planet": "Moon",
-            "issue": "Emotional imbalance, stress",
+            "issue": "Mental stress or emotional instability",
             "remedy": "Chant Chandra mantra on Mondays, wear white, offer milk to Shiva.",
-            "language_variants": {
-                "hi": "सोमवार को चंद्र मंत्र का जाप करें, सफेद वस्त्र पहनें, शिव को दूध अर्पित करें।",
-                "ta": "திங்கள் அன்று சந்திர மந்திரம் ஜபிக்கவும், வெள்ளை உடை அணியவும், சிவனுக்கு பால் நிவேதனம் செய்யவும்।"
-            },
-            "summary": "To strengthen Moon: chant mantra on Monday, wear white, offer milk to Shiva."
+            "summary": "Balance emotions by chanting Chandra mantra on Mondays and offering milk to Shiva."
         })
 
     # Weak Lagna Lord
@@ -99,19 +111,19 @@ def get_remedies(chart_data):
     if lagna_lord and lagna_lord.get("strength", 100) < 50:
         remedies.append({
             "planet": lagna_lord["name"],
-            "issue": "Weak Lagna lord affecting health and confidence",
-            "remedy": f"Chant {lagna_lord['name']} mantra daily, perform Surya namaskar.",
-            "summary": f"To strengthen Lagna Lord {lagna_lord['name']}, chant daily and practice Surya Namaskar."
+            "issue": "Low confidence or health due to weak Lagna lord",
+            "remedy": f"Chant {lagna_lord['name']} mantra daily, practice Surya Namaskar.",
+            "summary": f"Boost health and confidence with {lagna_lord['name']} mantra and Surya Namaskar."
         })
 
-    # Current Dasha
+    # Dasha remedy
     current_dasha = dasha_info.get("current", {}).get("planet")
     if current_dasha:
         remedies.append({
             "planet": current_dasha,
-            "issue": f"Running {current_dasha} Mahadasha",
-            "remedy": f"Worship {current_dasha} on their weekday, recite relevant stotra.",
-            "summary": f"For {current_dasha} Dasha: worship on weekday, recite their stotra."
+            "issue": f"Currently in {current_dasha} Mahadasha",
+            "remedy": f"Worship {current_dasha}, chant their stotra on their weekday.",
+            "summary": f"Pacify effects of {current_dasha} Mahadasha with worship and mantra recitation."
         })
 
     return remedies
