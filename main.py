@@ -46,6 +46,13 @@ DASHA_YEARS = {
     "Rahu": 18, "Jupiter": 16, "Saturn": 19, "Mercury": 17
 }
 
+NAKSHATRAS = [
+    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu", "Pushya", "Ashlesha",
+    "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
+    "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha", "Purva Bhadrapada",
+    "Uttara Bhadrapada", "Revati"
+]
+
 # Helpers
 def get_coordinates(place_name):
     geolocator = Nominatim(user_agent="navadharma")
@@ -92,7 +99,6 @@ def get_current_dasha(date_str, time_str, lat, lon):
     end_year = start_year + dasha_years
     mahadasha_period = f"{start_year}-01-01 to {end_year}-01-01"
 
-    # Fake Antardasha based on moon position (this is simplified)
     sub_index = int((moon_lon % (360 / 27)) / ((360 / 27) / 9))
     antardasha = DASHA_SEQUENCE[sub_index % 9]
 
@@ -102,22 +108,32 @@ def get_current_dasha(date_str, time_str, lat, lon):
         "period": mahadasha_period
     }
 
+def get_nakshatra(moon_longitude):
+    index = int(moon_longitude // (360 / 27))
+    return NAKSHATRAS[index]
+
+def detect_yogas(positions):
+    yogas = []
+
+    # Gaja Kesari Yoga: Moon and Jupiter in Kendra (90° multiple)
+    moon = positions["Moon"]
+    jupiter = positions["Jupiter"]
+    if abs(((moon - jupiter) + 360) % 360) % 90 < 15:
+        yogas.append("Gaja Kesari Yoga")
+
+    # Raja Yoga: Venus and Jupiter in Kendra
+    venus = positions["Venus"]
+    if abs(((venus - jupiter) + 360) % 360) % 90 < 15:
+        yogas.append("Raja Yoga")
+
+    return yogas
+
 @app.post("/predict-kp")
 async def predict_kp(request: PredictionRequest):
     try:
-        # Validate date
-        try:
-            datetime.strptime(request.date, "%Y-%m-%d")
-        except ValueError:
-            return JSONResponse(status_code=400, content={"error": "Invalid date format. Use YYYY-MM-DD"})
+        datetime.strptime(request.date, "%Y-%m-%d")
+        datetime.strptime(request.time, "%H:%M")
 
-        # Validate time
-        try:
-            datetime.strptime(request.time, "%H:%M")
-        except ValueError:
-            return JSONResponse(status_code=400, content={"error": "Invalid time format. Use HH:MM"})
-
-        # Validate place
         if not request.place or len(request.place.strip()) < 2:
             return JSONResponse(status_code=400, content={"error": "Place is required."})
 
@@ -125,16 +141,20 @@ async def predict_kp(request: PredictionRequest):
         if lat is None:
             return JSONResponse(status_code=400, content={"error": "Could not resolve location."})
 
-        # Astro Calculations
         lagna_sign = get_lagna(request.date, request.time, lat, lon)
         planets = get_planet_positions(request.date, request.time, lat, lon)
         dasha_info = get_current_dasha(request.date, request.time, lat, lon)
+        moon_lon = planets["Moon"]
+        nakshatra_name = get_nakshatra(moon_lon)
+        yogas = detect_yogas(planets)
 
         report_data = {
             "date": request.date,
             "time": request.time,
             "place": request.place,
             "lagna": lagna_sign,
+            "nakshatra": nakshatra_name,
+            "yogas": yogas,
             "planetaryPositions": planets,
             "currentDasha": dasha_info,
             "predictions": {
