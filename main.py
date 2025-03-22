@@ -1,12 +1,10 @@
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from utils.pdf_generator import generate_pdf
-from utils.geo import resolve_location
-from utils.astro import get_planet_positions, get_nakshatras, get_dasha_periods
-from utils.yogas import find_yogas
+from utils.astro_logic import calculate_astrology_data
+from utils.transits import get_current_transits, compare_transits_with_natal
 from utils.gpt_summary import generate_gpt_summary
-from utils.divisional_charts import calculate_divisional_chart, plot_chart
 import os
 from dotenv import load_dotenv
 
@@ -14,85 +12,73 @@ load_dotenv()
 
 app = FastAPI()
 
-class KPInput(BaseModel):
+origins = ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+NAVADHARMA_API_KEY = os.getenv("NAVADHARMA_API_KEY", "kp-demo-secret-key-123456")
+
+class KPRequest(BaseModel):
     name: str
-    date: str  # YYYY-MM-DD
-    time: str  # HH:MM
+    date: str
+    time: str
     place: str
-    language: str = "en"
     pdf: bool = False
-    chartStyle: str = "south"
+    lang: str = "en"
+
+@app.get("/")
+def read_root():
+    return {"msg": "🌠 Navadharma Astrology API is Live"}
 
 @app.post("/predict-kp")
-async def predict_kp(payload: KPInput):
+async def predict_kp(request: Request, data: KPRequest, x_api_key: str = Header(None)):
+    if x_api_key != NAVADHARMA_API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     try:
-        name = payload.name
-        date_str = payload.date
-        time_str = payload.time
-        place = payload.place
-        lang = payload.language
-        want_pdf = payload.pdf
-        style = payload.chartStyle.lower()
+        # Get Lat/Lon and TZ offset
+        from utils.geo import get_lat_lon_tz
+        lat, lon, tz_offset = get_lat_lon_tz(data.place)
 
-        # 🌐 1. Resolve coordinates and timezone
-        geo_data = resolve_location(place, date_str, time_str)
-        lat, lon, tz, local_dt = geo_data["lat"], geo_data["lon"], geo_data["tz"], geo_data["datetime"]
+        # Compute Astrology Data
+        astro_data = calculate_astrology_data(
+            date=data.date, time=data.time, lat=lat, lon=lon, tz_offset=tz_offset
+        )
 
-        # 🪐 2. Planet positions
-        planet_data, jd = get_planet_positions(local_dt, lat, lon)
+        # Compute Transits
+        current_transits = get_current_transits(lat, lon)
+        transit_analysis = compare_transits_with_natal(current_transits, astro_data["planetData"])
+        gpt_transit_summary = generate_gpt_summary(transit_analysis, lang=data.lang)
 
-        # 🌌 3. Nakshatras & Chandra lagna
-        nakshatra_data, chandra_lagna = get_nakshatras(planet_data)
+        # Generate GPT Summary of the Chart (optional)
+        gpt_chart_summary = generate_gpt_summary(astro_data["planetData"], lang=data.lang)
 
-        # 🔢 4. Vimshottari Dasha
-        dasha_info = get_dasha_periods(jd)
-
-        # 🧘 5. Yogas & Combinations
-        yoga_results = find_yogas(planet_data, chandra_lagna)
-
-        # 🧠 6. GPT Summary
-        gpt_summary = generate_gpt_summary(name, planet_data, dasha_info, nakshatra_data, yoga_results, lang)
-
-        # 🪔 7. Divisional Charts (D3–D60)
-        div_charts = {}
-        for chart_type in ["D3", "D7", "D9", "D10", "D12", "D24", "D60"]:
-            chart = calculate_divisional_chart(jd, lat, lon, chart_type)
-            chart_path = plot_chart(chart, f"{chart_type} Chart", f"{chart_type.lower()}_chart.png", style=style)
-            div_charts[chart_type] = chart_path
-
-        # 📄 8. Assemble Report Data
+        # Construct Report Data
         report_data = {
-            "name": name,
-            "date": date_str,
-            "time": time_str,
-            "place": place,
-            "planetData": planet_data,
-            "nakshatras": nakshatra_data,
-            "currentDasha": dasha_info,
-            "lagna": planet_data.get("Ascendant", "Unknown"),
-            "yogas": yoga_results,
-            "gptSummary": gpt_summary,
-            "divisionalCharts": div_charts,
+            "name": data.name,
+            "date": data.date,
+            "time": data.time,
+            "place": data.place,
+            "lagna": astro_data.get("lagna"),
+            "currentDasha": astro_data.get("dasha"),
+            "planetData": astro_data.get("planetData"),
+            "nakshatras": astro_data.get("nakshatras"),
+            "yogas": astro_data.get("yogas"),
+            "gptSummary": gpt_chart_summary,
+            "transits": transit_analysis,
+            "gptTransitSummary": gpt_transit_summary,
         }
 
-        if want_pdf:
-            pdf_path = generate_pdf(report_data, filename="Navadharma_Report.pdf")
-            return FileResponse(pdf_path, media_type="application/pdf", filename="Navadharma_Report.pdf")
+        if data.pdf:
+            pdf_path = generate_pdf(report_data, filename=f"{data.name}_Navadharma_Report.pdf")
+            return {"pdf_url": f"/{pdf_path}"}
 
-        return {
-            "name": name,
-            "location": {"lat": lat, "lon": lon, "tz": tz},
-            "planets": planet_data,
-            "nakshatras": nakshatra_data,
-            "dasha": dasha_info,
-            "yogas": yoga_results,
-            "summary": gpt_summary,
-            "charts": list(div_charts.keys()),
-        }
+        return report_data
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/")
-async def root():
-    return {"message": "🌠 Navadharma Astrology API is running"}
