@@ -1,62 +1,124 @@
 import swisseph as swe
 from datetime import datetime
-from utils.dasha_logic import get_dasha_periods
-from utils.nakshatra import get_nakshatra
-from utils.yogas import detect_yogas
-from utils.remedies import suggest_remedies
-from utils.chart_utils import get_coordinates, get_timezone_offset
+from timezonefinder import TimezoneFinder
+from geopy.geocoders import Nominatim
+import pytz
+import math
 
+swe.set_ephe_path("/usr/share/ephe")  # Adjust if using local ephemeris files
 
-def analyze_chart(birth_details: dict) -> dict:
-    date_str = birth_details.get("date")
-    time_str = birth_details.get("time")
-    place = birth_details.get("place")
-    language = birth_details.get("language", "en")
+nakshatras = [
+    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu",
+    "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta",
+    "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha", "Mula", "Purva Ashadha",
+    "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha", "Purva Bhadrapada",
+    "Uttara Bhadrapada", "Revati"
+]
 
-    # Parse datetime
-    birth_datetime = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+def get_coordinates(place_name):
+    geolocator = Nominatim(user_agent="navadharma-astro")
+    location = geolocator.geocode(place_name)
+    return (location.latitude, location.longitude) if location else (None, None)
 
-    # Get coordinates and timezone
-    lat, lon = get_coordinates(place)
-    tz_offset = get_timezone_offset(lat, lon, birth_datetime)
+def get_timezone_offset(lat, lon, dt_obj):
+    tf = TimezoneFinder()
+    timezone_str = tf.timezone_at(lng=lon, lat=lat)
+    tz = pytz.timezone(timezone_str)
+    offset_sec = tz.utcoffset(dt_obj).total_seconds()
+    return offset_sec / 3600
 
-    # Adjust datetime to UTC for swisseph
-    utc_datetime = birth_datetime - tz_offset
+def get_planet_positions(jd, lat, lon):
+    planets = {}
+    for p in range(swe.SUN, swe.PLUTO + 1):
+        pos, _ = swe.calc_ut(jd, p)
+        name = swe.get_planet_name(p)
+        planets[name] = pos[0]
+    return planets
 
-    jd_ut = swe.julday(utc_datetime.year, utc_datetime.month, utc_datetime.day,
-                       utc_datetime.hour + utc_datetime.minute / 60.0)
+def get_nakshatra(degree):
+    index = int(degree / (360 / 27))
+    return nakshatras[index % 27]
 
-    # Get planetary positions
-    planet_positions = {}
-    planet_names = {
-        swe.SUN: "Sun", swe.MOON: "Moon", swe.MERCURY: "Mercury", swe.VENUS: "Venus",
-        swe.MARS: "Mars", swe.JUPITER: "Jupiter", swe.SATURN: "Saturn",
-        swe.RAHU: "Rahu", swe.KETU: "Ketu"
+def get_dasha_periods(moon_deg):
+    nak_idx = int(moon_deg // (360 / 27))
+    dasha_lords = [
+        "Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu",
+        "Jupiter", "Saturn", "Mercury"
+    ]
+    order = dasha_lords[nak_idx % 9:] + dasha_lords[:nak_idx % 9]
+    return {
+        "mahadasha": order[0],
+        "antardasha": order[1],
+        "period": f"{order[0]} → {order[1]}"
     }
 
-    for planet, name in planet_names.items():
-        lon, _, _, _, _, _ = swe.calc_ut(jd_ut, planet)
-        nakshatra_info = get_nakshatra(lon)
-        planet_positions[name] = {
-            "longitude": lon,
-            "nakshatra": nakshatra_info.get("name"),
-            "pada": nakshatra_info.get("pada")
+def detect_yogas(planets):
+    yogas = []
+
+    if "Moon" in planets and "Jupiter" in planets:
+        moon_sign = int(planets["Moon"] / 30)
+        jup_sign = int(planets["Jupiter"] / 30)
+        if abs(moon_sign - jup_sign) in [4, 10]:  # Kendra from Moon
+            yogas.append("Gajakesari Yoga")
+
+    if "Sun" in planets and "Mercury" in planets:
+        if abs(planets["Sun"] - planets["Mercury"]) < 15:
+            yogas.append("Budha-Aditya Yoga")
+
+    if "Moon" in planets:
+        moon_sign = int(planets["Moon"] / 30)
+        alone = all(int(pos / 30) != moon_sign for k, pos in planets.items() if k != "Moon")
+        if alone:
+            yogas.append("Kemadruma Yoga")
+
+    return yogas
+
+def suggest_remedies(yogas, language="en"):
+    remedies = {
+        "Gajakesari Yoga": {
+            "en": "You have Gajakesari Yoga. It brings fame and wisdom. Worship Lord Vishnu.",
+            "hi": "आपके कुंडली में गजकेसरी योग है। यह यश और ज्ञान देता है। भगवान विष्णु की पूजा करें।"
+        },
+        "Budha-Aditya Yoga": {
+            "en": "Budha-Aditya Yoga grants intelligence. Strengthen Sun and Mercury.",
+            "ta": "புத அதித்ய யோகம் உங்களுக்கு புத்திசாலித்தனத்தை தரும். சூரியன் மற்றும் புதனை வலுப்படுத்துங்கள்."
+        },
+        "Kemadruma Yoga": {
+            "en": "Kemadruma Yoga may cause loneliness. Chant Moon mantras.",
+            "te": "కేమద్రుమ యోగం ఒంటరితనాన్ని కలిగించవచ్చు. చంద్రుని మంత్రాలను జపించండి."
         }
+    }
 
-    # Dasha logic (Vimshottari)
-    dashas = get_dasha_periods(jd_ut, planet_positions["Moon"]["longitude"])
+    response = []
+    for y in yogas:
+        if y in remedies:
+            lang_text = remedies[y].get(language, remedies[y]["en"])
+            response.append(f"{y}: {lang_text}")
+    return response
 
-    # Yogas
-    yogas = detect_yogas(planet_positions)
+def analyze_chart(date_str, time_str, place, language="en"):
+    dt_obj = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    lat, lon = get_coordinates(place)
+    if lat is None or lon is None:
+        return {"error": "Invalid location"}
 
-    # Remedies
-    remedies = suggest_remedies(yogas, dashas)
+    offset = get_timezone_offset(lat, lon, dt_obj)
+    jd = swe.julday(dt_obj.year, dt_obj.month, dt_obj.day, dt_obj.hour + dt_obj.minute / 60 - offset)
+    planets = get_planet_positions(jd, lat, lon)
+    moon_deg = planets.get("Moon", 0.0)
+    
+    nakshatra = get_nakshatra(moon_deg)
+    dasha_info = get_dasha_periods(moon_deg)
+    yogas = detect_yogas(planets)
+    remedies = suggest_remedies(yogas, language=language)
 
     return {
-        "planets": planet_positions,
-        "nakshatras": {k: v["nakshatra"] for k, v in planet_positions.items()},
+        "nakshatra": nakshatra,
+        "currentDasha": dasha_info,
         "yogas": yogas,
-        "dashas": dashas,
         "remedies": remedies,
-        "language": language
+        "planets": planets,
+        "lat": lat,
+        "lon": lon
     }
+
