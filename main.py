@@ -11,14 +11,12 @@ from utils.gpt_chat import ChatSessionManager
 app = FastAPI()
 chat_manager = ChatSessionManager()
 
-# Models
 class UserInput(BaseModel):
     name: str
-    dob: str  # format: YYYY-MM-DD
+    dob: str  # format: DD-MM-YYYY
     tob: str  # format: HH:MM
     pob: str
     lang: str = "en"
-    pdf: bool = False
 
 class MatchInput(BaseModel):
     person1: UserInput
@@ -28,8 +26,6 @@ class ChatInput(BaseModel):
     session_id: str
     message: str
 
-# Endpoints
-
 @app.post("/predict-kp")
 async def predict_kp(user: UserInput):
     chart = analyze_chart(user.name, user.dob, user.tob, user.pob)
@@ -38,10 +34,8 @@ async def predict_kp(user: UserInput):
     nakshatra = get_nakshatra_details(chart)
     remedies = get_remedies(chart)
     gpt = gpt_summary(chart, lang=user.lang)
-    pdf = None
 
-    if user.pdf:
-        pdf = generate_full_report(user.name, chart, dasha, yogas, nakshatra, remedies, gpt, lang=user.lang)
+    pdf = generate_full_report(user.name, chart, dasha, yogas, nakshatra, remedies, gpt, lang=user.lang)
 
     return {
         "chart": chart,
@@ -50,7 +44,7 @@ async def predict_kp(user: UserInput):
         "nakshatra": nakshatra,
         "remedies": remedies,
         "gpt": gpt,
-        "pdf": pdf
+        "pdf": pdf,
     }
 
 @app.post("/transit")
@@ -61,8 +55,9 @@ async def get_transit(user: UserInput):
 
 @app.get("/daily-transit")
 async def daily_transit():
-    data = get_daily_global_transits()
-    return data
+    transits = get_daily_global_transits()
+    gpt = gpt_summary(transits)
+    return {"transits": transits, "gpt": gpt}
 
 @app.post("/numerology")
 async def numerology(user: UserInput):
