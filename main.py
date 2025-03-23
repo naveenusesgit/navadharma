@@ -1,83 +1,90 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from utils.chart_extractor import get_nakshatra_info, get_ascendant
+from utils.chart_extractor import extract_chart_details
 from utils.dasha_calculator import get_current_dasha
-from utils.geolocation import get_lat_lon_timezone
 from utils.kp_predictor import get_kp_prediction
-from utils.forecast_logic import generate_daily_forecast
-import swisseph as swe
-import datetime
+from utils.geolocation import get_lat_lon_timezone
+from datetime import datetime
+import pytz
 
 app = FastAPI()
 
-
-class ChartRequest(BaseModel):
+class BirthDetails(BaseModel):
     name: str
-    dob: str  # YYYY-MM-DD
-    tob: str  # HH:MM (24h)
-    pob: str  # Place of birth
+    date_of_birth: str  # Format: YYYY-MM-DD
+    time_of_birth: str  # Format: HH:MM
+    place_of_birth: str
 
-
-@app.post("/get-chart")
-def get_chart(data: ChartRequest):
-    # Step 1: Get lat/lon and timezone
-    lat, lon, tz_offset = get_lat_lon_timezone(data.pob)
-
-    # Step 2: Parse datetime and convert to UTC
-    dt_str = f"{data.dob} {data.tob}"
-    dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
-    utc_dt = dt - datetime.timedelta(hours=tz_offset)
-
-    # Step 3: Julian Day
-    jd = swe.julday(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour + utc_dt.minute / 60)
-
-    # Step 4: Moon & Ascendant
-    moon_long = swe.calc_ut(jd, swe.MOON)[0]
-    ascendant = get_ascendant(jd, lat, lon)
-    nakshatra, pada, moon_sign = get_nakshatra_info(moon_long)
-
-    # Step 5: Dasha
-    dasha_info = get_current_dasha(jd, moon_long)
-
-    return {
-        "name": data.name,
-        "moon_sign": moon_sign,
-        "nakshatra": nakshatra,
-        "pada": pada,
-        "ascendant": ascendant,
-        "current_dasha": dasha_info
-    }
-
-
-class KPPredictRequest(BaseModel):
-    name: str
-    dob: str
-    tob: str
-    pob: str
-    question: str = "General prediction"
-
+@app.get("/")
+def root():
+    return {"message": "Welcome to Navadharma Astrology API"}
 
 @app.post("/predict-kp")
-def predict_kp(data: KPPredictRequest):
-    return get_kp_prediction(data.name, data.dob, data.tob, data.pob, data.question)
+def predict_kp(data: BirthDetails, request: Request):
+    return get_kp_prediction(data)
 
+@app.post("/get-chart")
+def get_chart(data: BirthDetails):
+    try:
+        lat, lon, tz = get_lat_lon_timezone(data.place_of_birth)
+        dt_str = f"{data.date_of_birth} {data.time_of_birth}"
+        tzinfo = pytz.timezone(tz)
+        dt_obj = tzinfo.localize(datetime.strptime(dt_str, "%Y-%m-%d %H:%M"))
 
-class ForecastRequest(BaseModel):
-    name: str
-    dob: str
-    tob: str
-    pob: str
-    date: str  # YYYY-MM-DD
-    focus_area: str = "general"  # career, relationship, legal, etc.
+        chart = extract_chart_details(dt_obj, lat, lon)
+        dasha = get_current_dasha(chart["julian_day"], chart["moon_longitude"], base_date=dt_obj)
 
+        return {
+            "name": data.name,
+            "date_time": dt_obj.isoformat(),
+            "location": {
+                "place": data.place_of_birth,
+                "latitude": lat,
+                "longitude": lon,
+                "timezone": tz,
+            },
+            "rasi": chart["rasi"],
+            "nakshatra": chart["nakshatra"],
+            "pada": chart["pada"],
+            "lagna": chart["lagna"],
+            "dasha": dasha,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.post("/daily-forecast")
-def daily_forecast(data: ForecastRequest):
-    return generate_daily_forecast(
-        name=data.name,
-        dob=data.dob,
-        tob=data.tob,
-        pob=data.pob,
-        date=data.date,
-        focus_area=data.focus_area
-    )
+def daily_forecast(data: BirthDetails):
+    try:
+        lat, lon, tz = get_lat_lon_timezone(data.place_of_birth)
+        dt_str = f"{data.date_of_birth} {data.time_of_birth}"
+        tzinfo = pytz.timezone(tz)
+        dt_obj = tzinfo.localize(datetime.strptime(dt_str, "%Y-%m-%d %H:%M"))
+
+        chart = extract_chart_details(dt_obj, lat, lon)
+        dasha = get_current_dasha(chart["julian_day"], chart["moon_longitude"], base_date=dt_obj)
+
+        maha = dasha.get("current_maha_dasha", "")
+        antar = dasha.get("current_antar_dasha", "")
+        rasi = chart.get("rasi")
+        nakshatra = chart.get("nakshatra")
+        lagna = chart.get("lagna")
+
+        message = (
+            f"🌞 Daily Forecast for {data.name}\n"
+            f"• Moon Sign (Rasi): {rasi}\n"
+            f"• Nakshatra: {nakshatra}\n"
+            f"• Lagna: {lagna}\n"
+            f"• Current Dasha: {maha} → Antar Dasha: {antar}\n\n"
+            f"✨ Based on your personalized Dasha period, today's energies are influenced by the karmic triggers of {maha} and the emotional tones of {antar}. "
+            f"Use this time for spiritual alignment, careful decision-making, and emotional clarity."
+        )
+
+        return {
+            "forecast": message,
+            "rasi": rasi,
+            "nakshatra": nakshatra,
+            "lagna": lagna,
+            "dasha": dasha
+        }
+    except Exception as e:
+        return {"error": str(e)}
