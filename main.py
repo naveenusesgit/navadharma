@@ -1,9 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from utils.astro_logic import (
-    analyze_chart, get_remedies, calculate_dasha,
-    get_yogas, get_nakshatra_details
-)
+from utils.astro_logic import analyze_chart, get_remedies, calculate_dasha, get_yogas, get_nakshatra_details
 from utils.transit import get_transits, get_daily_global_transits
 from utils.match_logic import analyze_compatibility
 from utils.numerology import calculate_numerology
@@ -21,6 +18,7 @@ class UserInput(BaseModel):
     tob: str  # format: HH:MM
     pob: str
     lang: str = "en"
+    pdf: bool = False
 
 class MatchInput(BaseModel):
     person1: UserInput
@@ -30,7 +28,8 @@ class ChatInput(BaseModel):
     session_id: str
     message: str
 
-# Routes
+# Endpoints
+
 @app.post("/predict-kp")
 async def predict_kp(user: UserInput):
     chart = analyze_chart(user.name, user.dob, user.tob, user.pob)
@@ -39,7 +38,10 @@ async def predict_kp(user: UserInput):
     nakshatra = get_nakshatra_details(chart)
     remedies = get_remedies(chart)
     gpt = gpt_summary(chart, lang=user.lang)
-    pdf = generate_full_report(user.name, chart, dasha, yogas, nakshatra, remedies, gpt, lang=user.lang)
+    pdf = None
+
+    if user.pdf:
+        pdf = generate_full_report(user.name, chart, dasha, yogas, nakshatra, remedies, gpt, lang=user.lang)
 
     return {
         "chart": chart,
@@ -48,7 +50,7 @@ async def predict_kp(user: UserInput):
         "nakshatra": nakshatra,
         "remedies": remedies,
         "gpt": gpt,
-        "pdf": pdf,
+        "pdf": pdf
     }
 
 @app.post("/transit")
@@ -60,13 +62,11 @@ async def get_transit(user: UserInput):
 @app.get("/daily-transit")
 async def daily_transit():
     data = get_daily_global_transits()
-    gpt = gpt_summary(data)
-    return {"transits": data, "gpt": gpt}
+    return data
 
 @app.post("/numerology")
 async def numerology(user: UserInput):
-    data = calculate_numerology(user.name, user.dob)
-    return data
+    return calculate_numerology(user.name, user.dob)
 
 @app.post("/match-compatibility")
 async def match_compatibility(match: MatchInput):
