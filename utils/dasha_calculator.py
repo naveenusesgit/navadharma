@@ -1,53 +1,94 @@
 from datetime import datetime, timedelta
-import swisseph as swe
 
-# Dasha Lords & Years
-DASHA_SEQUENCE = [
-    ("Ketu", 7), ("Venus", 20), ("Sun", 6), ("Moon", 10), ("Mars", 7),
-    ("Rahu", 18), ("Jupiter", 16), ("Saturn", 19), ("Mercury", 17)
-]
+# Vimshottari Dasha configuration
+PLANETS = ['Ketu', 'Venus', 'Sun', 'Moon', 'Mars', 'Rahu', 'Jupiter', 'Saturn', 'Mercury']
+DASHA_YEARS = {
+    'Ketu': 7,
+    'Venus': 20,
+    'Sun': 6,
+    'Moon': 10,
+    'Mars': 7,
+    'Rahu': 18,
+    'Jupiter': 16,
+    'Saturn': 19,
+    'Mercury': 17
+}
 
-def get_current_dasha(jd, moon_long):
-    # Nakshatra calculation
-    total_nakshatra_deg = 13 + 1/3  # 13°20'
-    nak_index = int(moon_long // total_nakshatra_deg)
-    nak_deg = moon_long % total_nakshatra_deg
+# Get Vimshottari Dasha sequence starting from the current nakshatra lord
+def get_dasha_sequence(start_index, start_date, total_period=120):
+    sequence = []
+    date = start_date
 
-    # Get Dasha lord
-    dasha_lord_index = nak_index % 9
-    dasha_lord, dasha_years = DASHA_SEQUENCE[dasha_lord_index]
+    for i in range(len(PLANETS)):
+        idx = (start_index + i) % len(PLANETS)
+        planet = PLANETS[idx]
+        years = DASHA_YEARS[planet]
+        duration_days = int(years * 365.25)
+        end_date = date + timedelta(days=duration_days)
 
-    # Calculate balance of first Maha Dasha based on position in nakshatra
-    percentage_completed = nak_deg / total_nakshatra_deg
-    balance_years = (1 - percentage_completed) * dasha_years
-    balance_days = int(balance_years * 365.25)
-
-    # Start date of first Dasha
-    birth_date = swe.revjul(jd)  # returns tuple (year, month, day, ...)
-    birth_dt = datetime(birth_date[0], birth_date[1], birth_date[2])
-
-    dasha_start = birth_dt
-    dasha_end = dasha_start + timedelta(days=balance_days)
-
-    # Maha Dasha cycle (next 3 dashas for preview)
-    dasha_cycle = []
-    index = dasha_lord_index
-    current_date = dasha_start
-
-    for _ in range(3):
-        lord, years = DASHA_SEQUENCE[index % len(DASHA_SEQUENCE)]
-        start = current_date
-        end = start + timedelta(days=int(years * 365.25))
-        dasha_cycle.append({
-            "maha_dasha": lord,
-            "start": start.strftime("%Y-%m-%d"),
-            "end": end.strftime("%Y-%m-%d")
+        sequence.append({
+            "maha_dasha": planet,
+            "start": date.strftime('%Y-%m-%d'),
+            "end": end_date.strftime('%Y-%m-%d')
         })
-        current_date = end
-        index += 1
 
-    return {
-        "current_maha_dasha": dasha_lord,
-        "maha_dasha_ends": dasha_end.strftime("%Y-%m-%d"),
-        "dasha_preview": dasha_cycle
-    }
+        date = end_date
+        if (date - start_date).days > total_period * 365:
+            break
+
+    return sequence
+
+# Calculate Antar Dasha (sub-periods) within a Mahadasha
+def get_antar_dashas(mahadasha_lord, start_date):
+    antar_dashas = []
+    total_days = int(DASHA_YEARS[mahadasha_lord] * 365.25)
+    date = start_date
+
+    for sub_lord in PLANETS:
+        proportion = DASHA_YEARS[sub_lord] / 120  # Vimshottari total cycle = 120 years
+        duration = int(proportion * total_days)
+        end_date = date + timedelta(days=duration)
+        antar_dashas.append({
+            "antar_dasha": sub_lord,
+            "start": date.strftime('%Y-%m-%d'),
+            "end": end_date.strftime('%Y-%m-%d')
+        })
+        date = end_date
+
+    return antar_dashas
+
+# Determine current Dasha (Mahadasha + Antar Dasha) from Nakshatra and time
+def get_current_dasha(julian_day, moon_longitude, base_date=None):
+    if base_date is None:
+        base_date = datetime.utcnow()
+
+    # Determine the Nakshatra index
+    nakshatra_index = int(moon_longitude / 13.3333)  # 13°20' per nakshatra
+    nakshatra_lord_index = nakshatra_index % len(PLANETS)
+
+    dasha_sequence = get_dasha_sequence(nakshatra_lord_index, base_date)
+
+    now = datetime.utcnow()
+    current_dasha = None
+
+    for maha in dasha_sequence:
+        start = datetime.strptime(maha['start'], '%Y-%m-%d')
+        end = datetime.strptime(maha['end'], '%Y-%m-%d')
+        if start <= now <= end:
+            antar_dashas = get_antar_dashas(maha['maha_dasha'], start)
+            for antar in antar_dashas:
+                antar_start = datetime.strptime(antar['start'], '%Y-%m-%d')
+                antar_end = datetime.strptime(antar['end'], '%Y-%m-%d')
+                if antar_start <= now <= antar_end:
+                    current_dasha = {
+                        "current_maha_dasha": maha['maha_dasha'],
+                        "maha_dasha_ends": maha['end'],
+                        "current_antar_dasha": antar['antar_dasha'],
+                        "antar_dasha_ends": antar['end'],
+                        "next_maha_dashas": dasha_sequence[:3],
+                        "next_antar_dashas": antar_dashas[:3]
+                    }
+                    break
+            break
+
+    return current_dasha
