@@ -1,75 +1,66 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from datetime import datetime
+from pydantic import BaseModel
+from utils.transit import get_transits, get_daily_global_transits
 from utils.match_logic import analyze_compatibility
-import logging
+from utils.kp_predictor import get_kp_prediction
 
-app = FastAPI(
-    title="Navadharma API",
-    description="Match compatibility analysis API using astrology logic.",
-    version="1.0.0"
-)
+app = FastAPI()
 
-# Enable CORS for frontend integration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # change in prod!
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the Navadharma Astrology API"}
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Input model for KP prediction
+class KPRequest(BaseModel):
+    name: str
+    birthDate: str
+    birthTime: str
+    birthPlace: str
 
-# Pydantic models
-class PersonData(BaseModel):
-    name: str = Field(..., example="Person A")
-    date: str = Field(..., example="1990-05-20")
-    time: str = Field(..., example="14:30")
-    location: str = Field(..., example="New York, USA")
-
-class MatchRequest(BaseModel):
-    person1: PersonData
-    person2: PersonData
-
-class MatchResult(BaseModel):
-    score: float
-    comments: str
-
-@app.get("/", tags=["Health"])
-def root():
-    return {"status": "OK", "message": "Navadharma API is running 🚀"}
-
-@app.get("/match", response_model=MatchResult, tags=["Compatibility"])
-def get_match(date1: str, date2: str):
-    """
-    Quick match using just birthdates.
-    """
+@app.post("/predict-kp")
+def predict_kp(data: KPRequest):
     try:
-        jd1 = datetime.strptime(date1, "%Y-%m-%d").toordinal()
-        jd2 = datetime.strptime(date2, "%Y-%m-%d").toordinal()
-        logger.info(f"Calculating match for {jd1} and {jd2}")
-        score, comments = analyze_compatibility(jd1, jd2)
-        return MatchResult(score=score, comments=comments)
+        result = get_kp_prediction(
+            name=data.name,
+            birth_date=data.birthDate,
+            birth_time=data.birthTime,
+            birth_place=data.birthPlace
+        )
+        return {"prediction": result}
     except Exception as e:
-        logger.exception("Error in GET /match")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/match", response_model=MatchResult, tags=["Compatibility"])
-def post_match(request: MatchRequest):
-    """
-    Full compatibility match using structured input.
-    """
+# Input model for compatibility
+class CompatibilityRequest(BaseModel):
+    person1: dict
+    person2: dict
+
+@app.post("/compatibility")
+def compatibility(data: CompatibilityRequest):
     try:
-        jd1 = datetime.strptime(request.person1.date, "%Y-%m-%d").toordinal()
-        jd2 = datetime.strptime(request.person2.date, "%Y-%m-%d").toordinal()
-        logger.info(f"POST match: {request.person1.name} vs {request.person2.name}")
-        score, comments = analyze_compatibility(jd1, jd2)
-        return MatchResult(score=score, comments=comments)
+        result = analyze_compatibility(data.person1, data.person2)
+        return {"compatibility": result}
     except Exception as e:
-        logger.exception("Error in POST /match")
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
+# Input model for transit request
+class TransitRequest(BaseModel):
+    birthDate: str
+    birthTime: str
+    birthPlace: str
+
+@app.post("/transits")
+def transit(data: TransitRequest):
+    try:
+        result = get_transits(data.birthDate, data.birthTime, data.birthPlace)
+        return {"transits": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/daily-transits")
+def daily_transits():
+    try:
+        result = get_daily_global_transits()
+        return {"dailyTransits": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
