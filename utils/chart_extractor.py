@@ -1,60 +1,75 @@
+# utils/chart_extractor.py
+
 import swisseph as swe
-import pytz
-from datetime import datetime
-from utils.geolocation import get_lat_lon_timezone
-from utils.dasha_calculator import get_current_dasha
+import datetime
+from timezonefinder import TimezoneFinder
+from geopy.geocoders import Nominatim
+from utils.dasha_calculator import get_current_dasha_periods
 
-def extract_chart(birth_date, birth_time, birth_place):
-    # Get coordinates and timezone
-    lat, lon, tz_str = get_lat_lon_timezone(birth_place)
-    tz = pytz.timezone(tz_str)
+swe.set_ephe_path('/usr/share/ephe')  # Or wherever your ephemeris files are installed
 
-    # Combine date and time to local datetime
-    birth_dt_str = f"{birth_date} {birth_time}"
-    local_dt = tz.localize(datetime.strptime(birth_dt_str, "%Y-%m-%d %H:%M"))
+def get_julian_day(date_str, time_str):
+    date_parts = [int(x) for x in date_str.split("-")]
+    time_parts = [int(x) for x in time_str.split(":")]
+    dt = datetime.datetime(*date_parts, *time_parts)
+    return swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60)
 
-    # Convert to UTC and Julian day
-    utc_dt = local_dt.astimezone(pytz.utc)
-    jd = swe.julday(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour + utc_dt.minute / 60)
+def get_timezone_and_coordinates(place_name):
+    geolocator = Nominatim(user_agent="chart_extractor")
+    location = geolocator.geocode(place_name)
+    if not location:
+        raise ValueError("Could not find location: " + place_name)
+    tf = TimezoneFinder()
+    timezone_str = tf.timezone_at(lng=location.longitude, lat=location.latitude)
+    return location.latitude, location.longitude, timezone_str
 
-    # Set ephemeris path
-    swe.set_ephe_path("/usr/share/ephe")  # or your local ephemeris path
+def get_moon_sign_and_nakshatra(jd):
+    flags = swe.FLG_SWIEPH
+    moon_pos, _ = swe.calc_ut(jd, swe.MOON, flags)
+    sign = int(moon_pos[0] // 30)
+    sign_names = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
+                  'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces']
+    moon_sign = sign_names[sign]
 
-    # Moon position for Rasi & Nakshatra
-    moon_pos, _ = swe.calc_ut(jd, swe.MOON)
-    moon_long = moon_pos[0]
-
-    # Determine Rasi (Moon Sign)
-    signs = [
-        "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
-        "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
-    ]
-    rasi = signs[int(moon_long // 30)]
-
-    # Determine Nakshatra & Pada
+    nakshatra = int(moon_pos[0] // (13.3333))
+    pada = int(((moon_pos[0] % 13.3333) / 3.3333)) + 1
     nakshatra_names = [
-        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu",
-        "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta",
-        "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha", "Mula", "Purva Ashadha",
-        "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha", "Purva Bhadrapada",
-        "Uttara Bhadrapada", "Revati"
+        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu", "Pushya",
+        "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta", "Chitra", "Swati",
+        "Vishakha", "Anuradha", "Jyeshta", "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana",
+        "Dhanishta", "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
     ]
-    nak_index = int((moon_long % 360) / (13 + 1/3))
-    nak_pada = int(((moon_long % (13 + 1/3)) / ((13 + 1/3)/4)) + 1)
-    nakshatra = nakshatra_names[nak_index]
+    return moon_sign, nakshatra_names[nakshatra], pada
 
-    # Ascendant (Lagna)
-    ascmc = swe.houses_ex(jd, lat, lon, b'A')[0]
-    ascendant_long = ascmc[0]
-    lagna = signs[int(ascendant_long // 30)]
+def get_ascendant(jd, latitude, longitude):
+    # House calculation
+    cusps, ascmc = swe.houses(jd, latitude, longitude.decode() if isinstance(longitude, bytes) else longitude, b'P')
+    asc_deg = ascmc[0]
+    asc_sign = int(asc_deg // 30)
+    sign_names = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
+                  'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces']
+    return sign_names[asc_sign]
 
-    # Dasha info
-    dasha_info = get_current_dasha(jd, moon_long)
+def extract_chart_details(name, date_of_birth, time_of_birth, place_of_birth):
+    try:
+        latitude, longitude, tz_str = get_timezone_and_coordinates(place_of_birth)
 
-    return {
-        "moon_sign": rasi,
-        "nakshatra": nakshatra,
-        "pada": nak_pada,
-        "ascendant": lagna,
-        "current_dasha": dasha_info
-    }
+        jd = get_julian_day(date_of_birth, time_of_birth)
+        moon_sign, nakshatra, pada = get_moon_sign_and_nakshatra(jd)
+        lagna = get_ascendant(jd, latitude, longitude)
+
+        dasha_info = get_current_dasha_periods(date_of_birth, time_of_birth, latitude, longitude)
+
+        return {
+            "name": name,
+            "moon_sign": moon_sign,
+            "nakshatra": nakshatra,
+            "pada": str(pada),
+            "lagna": lagna,
+            "dasha": dasha_info
+        }
+
+    except Exception as e:
+        return {
+            "error": str(e)
+        }
