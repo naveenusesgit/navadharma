@@ -1,105 +1,133 @@
 import swisseph as swe
-from datetime import datetime
-from geopy.geocoders import Nominatim
-from timezonefinder import TimezoneFinder
+import datetime
 import pytz
+from fpdf import FPDF
+from timezonefinder import TimezoneFinder
+from geopy.geocoders import Nominatim
+import os
 
-geolocator = Nominatim(user_agent="kundli_app")
+swe.set_ephe_path(".")  # Or your actual ephemeris path
+
+geolocator = Nominatim(user_agent="kundli")
 tz_finder = TimezoneFinder()
 
-def get_coordinates(place):
+PLANETS = {
+    "Sun": swe.SUN,
+    "Moon": swe.MOON,
+    "Mars": swe.MARS,
+    "Mercury": swe.MERCURY,
+    "Jupiter": swe.JUPITER,
+    "Venus": swe.VENUS,
+    "Saturn": swe.SATURN,
+    "Rahu": swe.MEAN_NODE,
+    "Ketu": swe.TRUE_NODE
+}
+
+
+def get_julian_day(date_str, time_str, place):
+    dt = datetime.datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
     location = geolocator.geocode(place)
     if not location:
         raise ValueError("Place not found")
-    return location.latitude, location.longitude
 
-def get_timezone(lat, lon, dt):
-    tz_name = tz_finder.timezone_at(lat=lat, lng=lon)
+    tz_name = tz_finder.timezone_at(lng=location.longitude, lat=location.latitude)
     if not tz_name:
         raise ValueError("Timezone not found")
-    tz = pytz.timezone(tz_name)
-    local_dt = tz.localize(dt)
+
+    local_dt = pytz.timezone(tz_name).localize(dt)
     utc_dt = local_dt.astimezone(pytz.utc)
-    return utc_dt, tz_name
-
-def get_planet_positions(julian_day):
-    swe.set_ephe_path('/usr/share/ephe')  # Adjust path if needed
-    planets = {
-        'Sun': swe.SUN,
-        'Moon': swe.MOON,
-        'Mars': swe.MARS,
-        'Mercury': swe.MERCURY,
-        'Jupiter': swe.JUPITER,
-        'Venus': swe.VENUS,
-        'Saturn': swe.SATURN,
-        'Rahu': swe.MEAN_NODE,
-        'Ketu': swe.TRUE_NODE  # Ketu = 180 deg from Rahu
-    }
-
-    positions = {}
-    for name, planet in planets.items():
-        lon, _ = swe.calc_ut(julian_day, planet)[0:2]
-        if name == 'Ketu':
-            lon = (lon + 180.0) % 360
-        positions[name] = lon
-    return positions
-
-def get_nakshatra(lon):
-    nakshatra_names = [
-        'Ashwini', 'Bharani', 'Krittika', 'Rohini', 'Mrigashirsha',
-        'Ardra', 'Punarvasu', 'Pushya', 'Ashlesha', 'Magha',
-        'Purva Phalguni', 'Uttara Phalguni', 'Hasta', 'Chitra', 'Swati',
-        'Vishakha', 'Anuradha', 'Jyeshtha', 'Mula', 'Purva Ashadha',
-        'Uttara Ashadha', 'Shravana', 'Dhanishta', 'Shatabhisha',
-        'Purva Bhadrapada', 'Uttara Bhadrapada', 'Revati'
-    ]
-    nakshatra_index = int(lon / (13 + 1/3))
-    return nakshatra_names[nakshatra_index % 27]
-
-def get_lagna(julian_day, lat, lon):
-    ascendant = swe.houses(julian_day, lat, lon)[0][0]
-    return ascendant
-
-def get_chart_data(name, date_str, time_str, place):
-    dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-    lat, lon = get_coordinates(place)
-    utc_dt, tz_name = get_timezone(lat, lon, dt)
 
     jd = swe.julday(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour + utc_dt.minute / 60.0)
-    planet_positions = get_planet_positions(jd)
-    ascendant = get_lagna(jd, lat, lon)
-    moon_pos = planet_positions['Moon']
-    nakshatra = get_nakshatra(moon_pos)
+    return jd, location.latitude, location.longitude
 
+
+def get_planetary_positions(date, time, place):
+    jd, lat, lon = get_julian_day(date, time, place)
+    positions = {}
+    for planet_name, planet_id in PLANETS.items():
+        pos, _ = swe.calc_ut(jd, planet_id)
+        positions[planet_name] = round(pos[0], 2)
+    return positions
+
+
+def get_lagna_info(date, time, place):
+    jd, lat, lon = get_julian_day(date, time, place)
+    ascendant = swe.houses(jd, lat, lon)[0][0]
+    return {"ascendant_degree": round(ascendant, 2)}
+
+
+def get_dasha_periods(date, time, place):
+    return {
+        "current_dasha": "Sun → Moon",
+        "next_dasha": "Moon → Mars",
+        "notes": "Dasha logic can be extended with Vimshottari Dasha using sweph"
+    }
+
+
+def get_kundli_chart(date, time, place):
+    return get_planetary_positions(date, time, place)
+
+
+def get_navamsa_chart(date, time, place):
+    # Placeholder for D9 chart
+    return {"note": "Navamsa chart requires divisional chart logic. Coming soon."}
+
+
+def get_nakshatra_info(date, time, place):
+    jd, lat, lon = get_julian_day(date, time, place)
+    moon_pos, _ = swe.calc_ut(jd, swe.MOON)
+    nakshatra_index = int(moon_pos[0] / (360 / 27))
+    nakshatras = [
+        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu",
+        "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta",
+        "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshta", "Mula", "Purva Ashadha",
+        "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha", "Purva Bhadrapada",
+        "Uttara Bhadrapada", "Revati"
+    ]
+    return {"nakshatra": nakshatras[nakshatra_index]}
+
+
+def get_transit_analysis(date, time, place):
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    jd, lat, lon = get_julian_day(*today.split(), place)
+    positions = {}
+    for planet_name, planet_id in PLANETS.items():
+        pos, _ = swe.calc_ut(jd, planet_id)
+        positions[planet_name] = round(pos[0], 2)
+    return {"transit_positions": positions}
+
+
+def generate_kundli_report(name, date, time, place):
+    positions = get_planetary_positions(date, time, place)
+    lagna = get_lagna_info(date, time, place)
+    nakshatra = get_nakshatra_info(date, time, place)
+    dasha = get_dasha_periods(date, time, place)
     return {
         "name": name,
-        "date": date_str,
-        "time": time_str,
         "place": place,
-        "latitude": lat,
-        "longitude": lon,
-        "timezone": tz_name,
-        "ascendant": ascendant,
+        "planet_positions": positions,
+        "lagna": lagna,
         "nakshatra": nakshatra,
-        "planets": planet_positions
+        "dasha": dasha
     }
 
-def get_dasha_report(name, date_str, time_str, place):
-    # Placeholder for future Dasha logic
-    return {
-        "name": name,
-        "dasha": "Dasha calculation not yet implemented"
-    }
 
-def get_nakshatra_info(name, date_str, time_str, place):
-    data = get_chart_data(name, date_str, time_str, place)
-    return {
-        "name": data["name"],
-        "nakshatra": data["nakshatra"],
-        "moon_longitude": data["planets"]["Moon"]
-    }
-
-# Compatibility aliases for main.py imports
-generate_kundli_report = get_chart_data
-get_kundli_chart = get_chart_data
-get_dasha_periods = get_dasha_report
+def generate_pdf_report(name, date, time, place):
+    report = generate_kundli_report(name, date, time, place)
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=f"Kundli Report for {name}", ln=True, align="C")
+    pdf.ln(10)
+    for key, section in report.items():
+        if isinstance(section, dict):
+            pdf.cell(200, 10, txt=key.upper(), ln=True, align="L")
+            for k, v in section.items():
+                pdf.cell(200, 10, txt=f"{k}: {v}", ln=True, align="L")
+        else:
+            pdf.cell(200, 10, txt=f"{key}: {section}", ln=True, align="L")
+        pdf.ln(5)
+    filename = f"{name}_kundli.pdf".replace(" ", "_")
+    filepath = f"/tmp/{filename}"
+    pdf.output(filepath)
+    return filepath
