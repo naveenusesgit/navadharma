@@ -1,65 +1,72 @@
-from fastapi import FastAPI, Request, HTTPException
-from pydantic import BaseModel, Field
-from utils.kp_predictor import get_kp_prediction
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from utils.chart_extractor import extract_chart_details
+from utils.dasha_calculator import get_current_dasha_periods
 from utils.daily_forecast import get_daily_forecast
-from utils.match import match_compatibility
-from utils.transit_analysis import analyze_transits
+from utils.matchmaking import get_matchmaking_report
 
 app = FastAPI()
 
+# === Pydantic Schemas ===
+
 class BirthDetails(BaseModel):
     name: str
-    date_of_birth: str = Field(alias="dob")
-    time_of_birth: str = Field(alias="tob")
-    place_of_birth: str = Field(alias="pob")
-    date: str | None = None  # Optional forecast date
+    date_of_birth: str
+    time_of_birth: str
+    place_of_birth: str
 
-    class Config:
-        populate_by_name = True
-        allow_population_by_field_name = True
-
+class ForecastRequest(BirthDetails):
+    target_date: str = None
 
 class MatchRequest(BaseModel):
     person1: BirthDetails
     person2: BirthDetails
 
+# === ROUTES ===
 
-@app.post("/predict-kp")
-async def predict_kp(data: BirthDetails):
-    try:
-        return get_kp_prediction(data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+@app.get("/")
+def read_root():
+    return {"message": "🪐 Navadharma Astrology API is live."}
 
 @app.post("/get-chart")
-async def get_chart(data: BirthDetails):
+def get_chart(details: BirthDetails):
     try:
-        return extract_chart_details(data)
+        return extract_chart_details(
+            details.name,
+            details.date_of_birth,
+            details.time_of_birth,
+            details.place_of_birth
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/get-dasha")
+def get_dasha(details: BirthDetails):
+    try:
+        return get_current_dasha_periods(
+            details.date_of_birth,
+            details.time_of_birth,
+            details.place_of_birth
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/daily-forecast")
-async def daily_forecast(data: BirthDetails):
+def daily_forecast(request: ForecastRequest):
     try:
-        return get_daily_forecast(data)
+        return get_daily_forecast(
+            name=request.name,
+            dob=request.date_of_birth,
+            tob=request.time_of_birth,
+            pob=request.place_of_birth,
+            target_date=request.target_date
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/matchmaking")
-async def matchmaking(data: MatchRequest):
+def matchmaking(request: MatchRequest):
     try:
-        return match_compatibility(data.person1, data.person2)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/transit-analysis")
-async def transit_analysis(data: BirthDetails):
-    try:
-        return analyze_transits(data)
+        return get_matchmaking_report(request.person1, request.person2)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
