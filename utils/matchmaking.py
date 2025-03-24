@@ -1,7 +1,7 @@
 # utils/match.py
 
 from typing import Dict
-from astro_logic import get_nakshatra
+from utils.astro_logic import get_nakshatra
 import swisseph as swe
 
 # Simplified Guna points for demo
