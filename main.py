@@ -1,90 +1,65 @@
-from fastapi import FastAPI, Request
-from pydantic import BaseModel
-from utils.chart_extractor import extract_chart_details
-from utils.dasha_calculator import get_current_dasha_periods
+from fastapi import FastAPI, Request, HTTPException
+from pydantic import BaseModel, Field
 from utils.kp_predictor import get_kp_prediction
-from utils.geolocation import get_lat_lon_timezone
-from datetime import datetime
-import pytz
+from utils.chart_extractor import extract_chart_details
+from utils.daily_forecast import get_daily_forecast
+from utils.matchmaking import match_compatibility
+from utils.transit_analysis import analyze_transits
 
 app = FastAPI()
 
 class BirthDetails(BaseModel):
     name: str
-    date_of_birth: str  # Format: YYYY-MM-DD
-    time_of_birth: str  # Format: HH:MM
-    place_of_birth: str
+    date_of_birth: str = Field(alias="dob")
+    time_of_birth: str = Field(alias="tob")
+    place_of_birth: str = Field(alias="pob")
+    date: str | None = None  # Optional forecast date
 
-@app.get("/")
-def root():
-    return {"message": "Welcome to Navadharma Astrology API"}
+    class Config:
+        populate_by_name = True
+        allow_population_by_field_name = True
+
+
+class MatchRequest(BaseModel):
+    person1: BirthDetails
+    person2: BirthDetails
+
 
 @app.post("/predict-kp")
-def predict_kp(data: BirthDetails, request: Request):
-    return get_kp_prediction(data)
+async def predict_kp(data: BirthDetails):
+    try:
+        return get_kp_prediction(data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/get-chart")
-def get_chart(data: BirthDetails):
+async def get_chart(data: BirthDetails):
     try:
-        lat, lon, tz = get_lat_lon_timezone(data.place_of_birth)
-        dt_str = f"{data.date_of_birth} {data.time_of_birth}"
-        tzinfo = pytz.timezone(tz)
-        dt_obj = tzinfo.localize(datetime.strptime(dt_str, "%Y-%m-%d %H:%M"))
-
-        chart = extract_chart_details(dt_obj, lat, lon)
-        dasha = get_current_dasha(chart["julian_day"], chart["moon_longitude"], base_date=dt_obj)
-
-        return {
-            "name": data.name,
-            "date_time": dt_obj.isoformat(),
-            "location": {
-                "place": data.place_of_birth,
-                "latitude": lat,
-                "longitude": lon,
-                "timezone": tz,
-            },
-            "rasi": chart["rasi"],
-            "nakshatra": chart["nakshatra"],
-            "pada": chart["pada"],
-            "lagna": chart["lagna"],
-            "dasha": dasha,
-        }
+        return extract_chart_details(data)
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/daily-forecast")
-def daily_forecast(data: BirthDetails):
+async def daily_forecast(data: BirthDetails):
     try:
-        lat, lon, tz = get_lat_lon_timezone(data.place_of_birth)
-        dt_str = f"{data.date_of_birth} {data.time_of_birth}"
-        tzinfo = pytz.timezone(tz)
-        dt_obj = tzinfo.localize(datetime.strptime(dt_str, "%Y-%m-%d %H:%M"))
-
-        chart = extract_chart_details(dt_obj, lat, lon)
-        dasha = get_current_dasha(chart["julian_day"], chart["moon_longitude"], base_date=dt_obj)
-
-        maha = dasha.get("current_maha_dasha", "")
-        antar = dasha.get("current_antar_dasha", "")
-        rasi = chart.get("rasi")
-        nakshatra = chart.get("nakshatra")
-        lagna = chart.get("lagna")
-
-        message = (
-            f"🌞 Daily Forecast for {data.name}\n"
-            f"• Moon Sign (Rasi): {rasi}\n"
-            f"• Nakshatra: {nakshatra}\n"
-            f"• Lagna: {lagna}\n"
-            f"• Current Dasha: {maha} → Antar Dasha: {antar}\n\n"
-            f"✨ Based on your personalized Dasha period, today's energies are influenced by the karmic triggers of {maha} and the emotional tones of {antar}. "
-            f"Use this time for spiritual alignment, careful decision-making, and emotional clarity."
-        )
-
-        return {
-            "forecast": message,
-            "rasi": rasi,
-            "nakshatra": nakshatra,
-            "lagna": lagna,
-            "dasha": dasha
-        }
+        return get_daily_forecast(data)
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/matchmaking")
+async def matchmaking(data: MatchRequest):
+    try:
+        return match_compatibility(data.person1, data.person2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/transit-analysis")
+async def transit_analysis(data: BirthDetails):
+    try:
+        return analyze_transits(data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
