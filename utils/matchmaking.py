@@ -1,24 +1,24 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from match import run_matchmaking
-
+from fastapi import HTTPException
 from pydantic import BaseModel
+from typing import Any
 
 
-class BirthDetails(BaseModel):
-    name: str
-    date_of_birth: str
-    time_of_birth: str
-    place_of_birth: str
+class MatchmakingRequest(BaseModel):
+    male_details: dict
+    female_details: dict
 
 
-def get_matchmaking_report(person1: BirthDetails, person2: BirthDetails):
-    """
-    Entry point for matchmaking report.
-    Calls run_matchmaking from match.py using two birth profiles.
-    """
-    return run_matchmaking(
-        person1.name, person1.date_of_birth, person1.time_of_birth, person1.place_of_birth,
-        person2.name, person2.date_of_birth, person2.time_of_birth, person2.place_of_birth,
-    )
+def get_matchmaking_report(data: MatchmakingRequest) -> Any:
+    try:
+        male = data.male_details
+        female = data.female_details
+
+        result = run_matchmaking(male, female)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
