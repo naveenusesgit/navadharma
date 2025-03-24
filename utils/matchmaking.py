@@ -1,4 +1,4 @@
-from utils.match import generate_match_report
+from utils.match import run_matchmaking
 from pydantic import BaseModel
 
 
@@ -11,10 +11,10 @@ class BirthDetails(BaseModel):
 
 def get_matchmaking_report(person1: BirthDetails, person2: BirthDetails):
     """
-    This function wraps the actual matchmaking logic from match.py
-    and exposes a clean interface for the FastAPI route.
+    Entry point for matchmaking report.
+    Calls run_matchmaking from match.py using two birth profiles.
     """
-    return generate_match_report(
+    return run_matchmaking(
         person1.name, person1.date_of_birth, person1.time_of_birth, person1.place_of_birth,
-        person2.name, person2.date_of_birth, person2.time_of_birth, person2.place_of_birth
+        person2.name, person2.date_of_birth, person2.time_of_birth, person2.place_of_birth,
     )
