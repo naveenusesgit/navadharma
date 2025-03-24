@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from utils.chart_extractor import extract_chart_details
-from utils.dasha_calculator import get_current_dasha
+from utils.dasha_calculator import get_current_dasha_periods
 from utils.kp_predictor import get_kp_prediction
 from utils.geolocation import get_lat_lon_timezone
 from datetime import datetime
