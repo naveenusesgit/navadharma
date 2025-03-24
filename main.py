@@ -1,85 +1,83 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from utils.kundli import (
-    get_kundli_data,
-    get_dasha_report,
-    get_nakshatra_info,
-    get_chart_data,
-    get_matchmaking_report,
-    get_panchang_data
-)
-from fastapi.middleware.cors import CORSMiddleware
+from utils.kundli import generate_kundli_report, get_kundli_chart, get_dasha_periods, get_nakshatra_info
+from utils.panchang import get_panchang_data
+from utils.matchmaking import get_matchmaking_report
+from utils.transit import get_transit_info
+from utils.ashtakvarga import get_ashtakvarga_analysis
+from utils.muhurta import get_muhurta_suggestions
+from utils.remedies import get_astrological_remedies
 
-app = FastAPI(
-    title="Navadharma Astrology API",
-    description="Endpoints for generating kundli, dasha, nakshatra, charts, matchmaking and panchang.",
-    version="1.0.0"
-)
+app = FastAPI()
 
-# Allow all origins (update in prod!)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# Standard input
-class AstroRequest(BaseModel):
+# Base input model
+class BirthDetails(BaseModel):
     name: str
-    date: str  # Format: YYYY-MM-DD
-    time: str  # Format: HH:MM (24-hour)
-    place: str  # e.g., "Chennai, India"
+    date: str  # YYYY-MM-DD
+    time: str  # HH:MM
+    place: str
 
-class MatchRequest(BaseModel):
-    boy_name: str
-    boy_dob: str
-    boy_tob: str
-    boy_pob: str
-    girl_name: str
-    girl_dob: str
-    girl_tob: str
-    girl_pob: str
+
+# Matchmaking input model
+class MatchmakingInput(BaseModel):
+    person1: BirthDetails
+    person2: BirthDetails
 
 
 @app.get("/health")
-def health():
-    """Health check endpoint."""
-    return {"status": "OK"}
+def health_check():
+    return {"status": "ok"}
 
 
 @app.post("/generate-report")
-def generate_report(req: AstroRequest):
-    """Generates full kundli report (D1/D9 charts, lagna, nakshatra, etc)."""
-    return get_kundli_data(req.name, req.date, req.time, req.place)
+def generate_astro_report(details: BirthDetails):
+    try:
+        return generate_kundli_report(details)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/kundli-chart")
-def kundli_chart(req: AstroRequest):
-    """Returns D1/D9 chart data (planetary positions in houses/signs)."""
-    return get_chart_data(req.name, req.date, req.time, req.place)
+def kundli_chart(details: BirthDetails):
+    return get_kundli_chart(details)
 
 
 @app.post("/dasha")
-def dasha(req: AstroRequest):
-    """Returns Vimshottari Dasha timeline for the person."""
-    return get_dasha_report(req.name, req.date, req.time, req.place)
+def dasha_periods(details: BirthDetails):
+    return get_dasha_periods(details)
 
 
 @app.post("/nakshatra")
-def nakshatra(req: AstroRequest):
-    """Returns moon nakshatra and pada information."""
-    return get_nakshatra_info(req.name, req.date, req.time, req.place)
-
-
-@app.post("/matchmaking")
-def matchmaking(req: MatchRequest):
-    """Returns matchmaking report for two individuals."""
-    return get_matchmaking_report(req)
+def nakshatra_info(details: BirthDetails):
+    return get_nakshatra_info(details)
 
 
 @app.post("/panchang")
-def panchang(req: AstroRequest):
-    """Returns panchang data for given date and place (tithi, yoga, karana, etc)."""
-    return get_panchang_data(req.date, req.time, req.place)
+def panchang_data(details: BirthDetails):
+    return get_panchang_data(details)
+
+
+@app.post("/matchmaking")
+def matchmaking(data: MatchmakingInput):
+    return get_matchmaking_report(data.person1, data.person2)
+
+
+@app.post("/transits")
+def transits(details: BirthDetails):
+    return get_transit_info(details)
+
+
+@app.post("/ashtakvarga")
+def ashtakvarga(details: BirthDetails):
+    return get_ashtakvarga_analysis(details)
+
+
+@app.post("/muhurta")
+def muhurta(details: BirthDetails):
+    return get_muhurta_suggestions(details)
+
+
+@app.post("/remedies")
+def remedies(details: BirthDetails):
+    return get_astrological_remedies(details)
