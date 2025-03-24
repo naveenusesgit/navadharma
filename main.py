@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from utils.kp_predictor import get_kp_prediction
 from utils.chart_extractor import extract_chart_details
 from utils.daily_forecast import get_daily_forecast
-from utils.matchmaking import match_compatibility
+from utils.match import match_compatibility
 from utils.transit_analysis import analyze_transits
 
 app = FastAPI()
