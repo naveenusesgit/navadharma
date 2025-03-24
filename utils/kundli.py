@@ -2,139 +2,134 @@ import swisseph as swe
 import datetime
 from timezonefinder import TimezoneFinder
 from geopy.geocoders import Nominatim
+import pytz
 
-# Set Swiss Ephemeris path
-swe.set_ephe_path("/usr/share/ephe")  # Update this path if needed
 
-# Helper: get Julian Day
-def get_julian_day(date, time, place):
-    dt = datetime.datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
-    geolocator = Nominatim(user_agent="kundli-generator")
+def get_julian_day(date_str, time_str, place):
+    geolocator = Nominatim(user_agent="kundli_app")
     location = geolocator.geocode(place)
     if not location:
-        raise ValueError("Invalid location")
+        raise ValueError("Invalid place name")
     
-    tf = TimezoneFinder()
-    timezone_str = tf.timezone_at(lng=location.longitude, lat=location.latitude)
-    tz_offset = datetime.datetime.now(datetime.timezone.utc).astimezone().utcoffset().total_seconds() / 3600
+    timezone_str = TimezoneFinder().timezone_at(lng=location.longitude, lat=location.latitude)
+    if not timezone_str:
+        raise ValueError("Could not determine timezone")
 
-    jd = swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60 - tz_offset)
+    tz = pytz.timezone(timezone_str)
+    local_dt = tz.localize(datetime.datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M"))
+    utc_dt = local_dt.astimezone(pytz.utc)
+    jd = swe.julday(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour + utc_dt.minute / 60.0)
+
     return jd, location.latitude, location.longitude
 
-# Nakshatra and Lord
-def get_nakshatra_info(moon_long):
-    nakshatra_names = [
-        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha", "Ardra",
-        "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
-        "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
-        "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta",
-        "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
-    ]
-    lords = [
+
+def get_planet_positions(jd, flags=swe.FLG_SWIEPH | swe.FLG_SPEED):
+    planets = {
+        "Sun": swe.SUN,
+        "Moon": swe.MOON,
+        "Mars": swe.MARS,
+        "Mercury": swe.MERCURY,
+        "Jupiter": swe.JUPITER,
+        "Venus": swe.VENUS,
+        "Saturn": swe.SATURN,
+        "Rahu": swe.MEAN_NODE,
+        "Ketu": swe.TRUE_NODE,  # We'll reverse Ketu below
+    }
+    positions = {}
+
+    for name, planet in planets.items():
+        lon, lat, dist, speed = swe.calc_ut(jd, planet, flags)
+        if name == "Ketu":
+            lon = (lon + 180) % 360  # Ketu is always opposite Rahu
+        positions[name] = round(lon, 2)
+    
+    return positions
+
+
+def get_d1_chart(jd):
+    return get_planet_positions(jd)
+
+
+def get_d9_chart(jd):
+    # Navamsa is calculated from D1 planetary longitudes
+    d1_chart = get_planet_positions(jd)
+    d9_chart = {}
+
+    for planet, lon in d1_chart.items():
+        sign = int(lon // 30)
+        navamsa = int(((lon % 30) * 9) // 30)
+        new_sign = (sign * 9 + navamsa) % 12
+        d9_chart[planet] = new_sign * 30 + ((lon % 30) * 9) % 30
+
+    return {k: round(v, 2) for k, v in d9_chart.items()}
+
+
+def get_lagna(jd, lat, lon):
+    cusps, ascmc = swe.houses(jd, lat, lon)
+    return round(ascmc[0], 2)  # Ascendant
+
+
+def get_nakshatra_info(jd):
+    moon_long, _, _, _ = swe.calc_ut(jd, swe.MOON)
+    nakshatra = int(moon_long / (360 / 27)) + 1
+    pada = int(((moon_long % (360 / 27)) / (360 / 108))) + 1
+    return {
+        "nakshatra_number": nakshatra,
+        "pada": pada
+    }
+
+
+def get_dasha_periods(jd):
+    moon_long, _, _, _ = swe.calc_ut(jd, swe.MOON)
+    nakshatra_num = int(moon_long / (360 / 27)) % 27
+    dasha_lords = [
         "Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury"
     ]
-    index = int(moon_long / (13 + 1/3))
-    nak = nakshatra_names[index % 27]
-    lord = lords[index % 9]
-    return {"nakshatra": nak, "lord": lord}
-
-# Lagna calculation
-def get_lagna(jd, lat, lon):
-    asc = swe.houses(jd, lat, lon)[0][0]
-    return round(asc, 2)
-
-# Generate D1 Chart
-def get_d1_chart(jd):
-    planets = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"]
-    planet_positions = {}
-    for i, planet in enumerate(planets, start=0):
-        lon, _ = swe.calc_ut(jd, i)
-        planet_positions[planet] = round(lon[0], 2)
-    return planet_positions
-
-# Generate D9 (Navamsa) Chart
-def get_d9_chart(jd):
-    d9_chart = {}
-    for planet_id in range(7):  # Sun to Saturn
-        lon, _ = swe.calc_ut(jd, planet_id)
-        sign = int(lon[0] / 30)
-        navamsa = int((lon[0] % 30) / 3.3333)
-        d9_chart[swe.get_planet_name(planet_id)] = f"Sign: {sign+1}, Navamsa: {navamsa+1}"
-    return d9_chart
-
-# Expanded Vimshottari Dasha
-def get_dasha_periods(date, time, place):
-    jd, lat, lon = get_julian_day(date, time, place)
-    moon_pos, _ = swe.calc_ut(jd, swe.MOON)
-    moon_long = moon_pos[0]
-
-    nakshatra_size = 13 + (20 / 60)
-    nakshatra_index = int(moon_long // nakshatra_size)
-    degrees_into_nakshatra = moon_long % nakshatra_size
-
-    dasha_lords = ["Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury"]
     dasha_years = {
-        "Ketu": 7, "Venus": 20, "Sun": 6, "Moon": 10,
-        "Mars": 7, "Rahu": 18, "Jupiter": 16, "Saturn": 19, "Mercury": 17
+        "Ketu": 7,
+        "Venus": 20,
+        "Sun": 6,
+        "Moon": 10,
+        "Mars": 7,
+        "Rahu": 18,
+        "Jupiter": 16,
+        "Saturn": 19,
+        "Mercury": 17
     }
 
-    current_lord = dasha_lords[nakshatra_index % 9]
-    total_dasha_years = dasha_years[current_lord]
-    proportion_passed = degrees_into_nakshatra / nakshatra_size
-    days_passed = total_dasha_years * proportion_passed * 365.25
+    start_index = nakshatra_num % 9
+    start_lord = dasha_lords[start_index]
+    start_year = int(datetime.datetime.utcnow().year)
 
-    start_date = datetime.datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
-    dasha_start = start_date - datetime.timedelta(days=days_passed)
-    dasha_end = dasha_start + datetime.timedelta(days=total_dasha_years * 365.25)
-
-    antardasha_list = []
-    for lord in dasha_lords:
-        sub_years = total_dasha_years * (dasha_years[lord] / 120)
-        sub_days = sub_years * 365.25
-        antardasha_list.append({
+    dasha_sequence = []
+    for i in range(9):
+        lord = dasha_lords[(start_index + i) % 9]
+        dasha_sequence.append({
             "lord": lord,
-            "duration_days": round(sub_days, 1)
+            "start_year": start_year,
+            "end_year": start_year + dasha_years[lord]
         })
+        start_year += dasha_years[lord]
 
-    return {
-        "current_mahadasha": current_lord,
-        "start_date": dasha_start.strftime("%Y-%m-%d"),
-        "end_date": dasha_end.strftime("%Y-%m-%d"),
-        "antardasha_sequence": antardasha_list
-    }
+    return dasha_sequence
 
-# Remedy suggestion (stub)
-def suggest_remedies(nakshatra_lord):
-    remedies = {
-        "Sun": "Worship Surya, chant Aditya Hridayam",
-        "Moon": "Chant Chandra mantra, wear white",
-        "Mars": "Hanuman Chalisa, wear red coral",
-        "Mercury": "Budh mantra, green clothes",
-        "Jupiter": "Guru mantra, yellow clothing",
-        "Venus": "Shukra mantra, offer sweets",
-        "Saturn": "Shani mantra, offer mustard oil",
-        "Rahu": "Durga mantra, coconut donation",
-        "Ketu": "Ganesha worship, feed dogs"
-    }
-    return remedies.get(nakshatra_lord, "Meditate and follow your dharma")
 
-# Full Kundli report
-def generate_kundli_report(name, date, time, place):
+def get_kundli_chart(date, time, place):
     jd, lat, lon = get_julian_day(date, time, place)
     d1 = get_d1_chart(jd)
     d9 = get_d9_chart(jd)
-    moon_long, _ = swe.calc_ut(jd, swe.MOON)
-    nakshatra_info = get_nakshatra_info(moon_long[0])
     lagna = get_lagna(jd, lat, lon)
-    dasha = get_dasha_periods(date, time, place)
-    remedies = suggest_remedies(nakshatra_info["lord"])
-
     return {
-        "name": name,
-        "lagna": lagna,
-        "nakshatra": nakshatra_info,
-        "d1_chart": d1,
-        "d9_chart": d9,
-        "dasha": dasha,
-        "remedies": remedies
+        "D1": d1,
+        "D9": d9,
+        "Lagna": lagna
+    }
+
+
+def generate_kundli_report(date, time, place):
+    jd, lat, lon = get_julian_day(date, time, place)
+    return {
+        "chart": get_kundli_chart(date, time, place),
+        "nakshatra": get_nakshatra_info(jd),
+        "dasha": get_dasha_periods(jd)
     }
