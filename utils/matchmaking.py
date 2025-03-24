@@ -1,4 +1,4 @@
-from utils.match import run_matchmaking
+from match import run_matchmaking
 from pydantic import BaseModel
 
 
