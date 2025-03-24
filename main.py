@@ -4,6 +4,7 @@ from utils.chart_extractor import extract_chart_details
 from utils.dasha_calculator import get_current_dasha_periods
 from utils.daily_forecast import get_daily_forecast
 from utils.matchmaking import get_matchmaking_report
+from utils.astro_logic import get_nakshatra
 
 app = FastAPI()
 
