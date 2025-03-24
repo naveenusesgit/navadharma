@@ -1,10 +1,14 @@
 import swisseph as swe
-import datetime
+from datetime import datetime
 from timezonefinder import TimezoneFinder
 from geopy.geocoders import Nominatim
 import pytz
 
-# Constants
+swe.set_ephe_path('.')  # Assumes ephemeris files are in root or shipped
+
+geolocator = Nominatim(user_agent="navadharma-app")
+tf = TimezoneFinder()
+
 PLANETS = {
     "Sun": swe.SUN,
     "Moon": swe.MOON,
@@ -14,113 +18,118 @@ PLANETS = {
     "Venus": swe.VENUS,
     "Saturn": swe.SATURN,
     "Rahu": swe.MEAN_NODE,
-    "Ketu": swe.MEAN_NODE  # will adjust 180 deg later
+    "Ketu": swe.TRUE_NODE,
 }
 
-NAKSHATRAS = [
-    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha", "Ardra",
-    "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
-    "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
-    "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
-    "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
-]
 
-def get_nakshatra(degree):
-    segment = 13 + 1/3  # 13°20' = 13.333...
-    nak_num = int(degree // segment)
-    pada = int((degree % segment) // (segment / 4)) + 1
-    nakshatra = NAKSHATRAS[nak_num % 27]
-    return nakshatra, pada
+def get_coordinates(place):
+    location = geolocator.geocode(place)
+    if not location:
+        raise ValueError("Place not found.")
+    return location.latitude, location.longitude
 
-def get_rasi_chart(positions):
-    rasi = {i: [] for i in range(1, 13)}  # Houses 1-12
-    for planet, lon in positions.items():
-        sign = int(lon // 30) + 1
-        rasi[sign].append(planet)
-    return rasi
 
-def get_d9_chart(positions):
-    d9 = {i: [] for i in range(1, 13)}
-    for planet, lon in positions.items():
-        navamsa_pos = (lon % 30) * 12
-        navamsa_sign = int(navamsa_pos // 30) + 1
-        sign = int(lon // 30) + 1
-        if sign in [1, 4, 7, 10]:
-            final_sign = ((sign - 1) * 3 + navamsa_sign - 1) % 12 + 1
-        elif sign in [2, 5, 8, 11]:
-            final_sign = ((sign - 2) * 3 + navamsa_sign + 3 - 1) % 12 + 1
-        else:
-            final_sign = ((sign - 3) * 3 + navamsa_sign + 6 - 1) % 12 + 1
-        d9[final_sign].append(planet)
-    return d9
+def get_timezone_offset(lat, lon, date, time):
+    tz_name = tf.timezone_at(lat=lat, lng=lon)
+    if not tz_name:
+        raise ValueError("Could not determine timezone.")
+    dt_naive = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+    tz = pytz.timezone(tz_name)
+    dt_local = tz.localize(dt_naive)
+    utc_offset = dt_local.utcoffset().total_seconds() / 3600
+    return dt_local, utc_offset
 
-def get_lagna(jd_ut, lat, lon):
-    # Calculate the ascendant (Lagna)
-    flags = swe.FLG_SIDEREAL
-    cusps, ascmc = swe.houses_ex(jd_ut, lat, lon, b'A', flags)
-    lagna_deg = ascmc[0]
-    return lagna_deg, int(lagna_deg // 30) + 1
 
-def get_kundli_data(name: str, date: str, time: str, place: str):
-    try:
-        # Parse input datetime
-        dt = datetime.datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+def get_planet_positions(jd, lat, lon):
+    swe.set_topo(lon, lat, 0)
+    positions = {}
+    for name, planet_id in PLANETS.items():
+        lon, _lat, _speed = swe.calc_ut(jd, planet_id)
+        positions[name] = round(lon % 360, 2)
+    return positions
 
-        # Geocode place
-        geolocator = Nominatim(user_agent="kundli-generator")
-        location = geolocator.geocode(place)
-        if not location:
-            return {"error": "Place not found"}
-        lat, lon = location.latitude, location.longitude
 
-        # Get timezone info
-        tf = TimezoneFinder()
-        timezone_str = tf.timezone_at(lng=lon, lat=lat)
-        local_tz = pytz.timezone(timezone_str)
-        local_dt = local_tz.localize(dt)
-        utc_dt = local_dt.astimezone(pytz.utc)
+def get_lagna(jd, lat, lon):
+    ascendant = swe.houses_ex(jd, lat, lon, b'A')[0][0]
+    return round(ascendant, 2)
 
-        # Swiss Ephemeris setup
-        swe.set_ephe_path(".")
-        jd_ut = swe.julday(utc_dt.year, utc_dt.month, utc_dt.day,
-                           utc_dt.hour + utc_dt.minute / 60.0)
 
-        # Calculate planetary longitudes
-        planet_positions = {}
-        for planet, pid in PLANETS.items():
-            lon_deg = swe.calc_ut(jd_ut, pid)[0]
-            if planet == "Ketu":
-                lon_deg = (lon_deg + 180) % 360
-            planet_positions[planet] = round(lon_deg, 2)
+def get_kundli_data(name, date, time, place):
+    lat, lon = get_coordinates(place)
+    dt_local, offset = get_timezone_offset(lat, lon, date, time)
+    jd = swe.julday(dt_local.year, dt_local.month, dt_local.day, dt_local.hour + dt_local.minute / 60)
 
-        # Lagna
-        lagna_deg, lagna_sign = get_lagna(jd_ut, lat, lon)
+    planets = get_planet_positions(jd, lat, lon)
+    lagna = get_lagna(jd, lat, lon)
 
-        # Moon Nakshatra
-        moon_deg = planet_positions["Moon"]
-        nakshatra, pada = get_nakshatra(moon_deg)
+    return {
+        "name": name,
+        "date": date,
+        "time": time,
+        "place": place,
+        "lagna_degree": lagna,
+        "planet_positions": planets,
+    }
 
-        # Charts
-        d1 = get_rasi_chart(planet_positions)
-        d9 = get_d9_chart(planet_positions)
 
-        return {
-            "name": name,
-            "birth_datetime_utc": utc_dt.isoformat(),
-            "birth_place": place,
-            "coordinates": {"lat": lat, "lon": lon},
-            "lagna": {
-                "degree": round(lagna_deg, 2),
-                "rasi": lagna_sign
-            },
-            "moon_nakshatra": {
-                "nakshatra": nakshatra,
-                "pada": pada
-            },
-            "planet_positions": planet_positions,
-            "d1_chart": d1,
-            "d9_chart": d9
-        }
+def get_chart_data(name, date, time, place):
+    return get_kundli_data(name, date, time, place)  # Simplified; same logic
 
-    except Exception as e:
-        return {"error": str(e)}
+
+def get_nakshatra_info(name, date, time, place):
+    lat, lon = get_coordinates(place)
+    dt_local, offset = get_timezone_offset(lat, lon, date, time)
+    jd = swe.julday(dt_local.year, dt_local.month, dt_local.day, dt_local.hour + dt_local.minute / 60)
+
+    moon_long, _ = swe.calc_ut(jd, swe.MOON)
+    moon_deg = moon_long % 360
+
+    nak_num = int(moon_deg / (360 / 27)) + 1
+    pada = int((moon_deg % (360 / 27)) / (360 / 108)) + 1
+
+    return {
+        "moon_longitude": round(moon_deg, 2),
+        "nakshatra_number": nak_num,
+        "nakshatra_pada": pada
+    }
+
+
+def get_dasha_report(name, date, time, place):
+    # Placeholder: real dasha needs more logic (e.g., Lahiri ayanamsa, moon deg, etc.)
+    return {
+        "name": name,
+        "dasha": [
+            {"period": "2023-2039", "planet": "Venus"},
+            {"period": "2039-2045", "planet": "Sun"},
+            {"period": "2045-2062", "planet": "Moon"},
+        ]
+    }
+
+
+def get_matchmaking_report(data):
+    # Placeholder logic
+    return {
+        "boy": data.boy_name,
+        "girl": data.girl_name,
+        "compatibility_score": 28,
+        "verdict": "Good match. Traditional compatibility score is above 25."
+    }
+
+
+def get_panchang_data(date, time, place):
+    lat, lon = get_coordinates(place)
+    dt_local, offset = get_timezone_offset(lat, lon, date, time)
+    jd = swe.julday(dt_local.year, dt_local.month, dt_local.day, dt_local.hour + dt_local.minute / 60)
+
+    moon_long, _ = swe.calc_ut(jd, swe.MOON)
+    sun_long, _ = swe.calc_ut(jd, swe.SUN)
+
+    tithi = int(((moon_long - sun_long) % 360) / 12) + 1
+    nakshatra = int(moon_long / (360 / 27)) + 1
+
+    return {
+        "tithi_number": tithi,
+        "nakshatra_number": nakshatra,
+        "sun_long": round(sun_long, 2),
+        "moon_long": round(moon_long, 2)
+    }
