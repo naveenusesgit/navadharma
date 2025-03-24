@@ -1,33 +1,44 @@
 import swisseph as swe
-import datetime
+from utils.location_utils import get_timezone_offset
+from datetime import datetime
+from timezonefinder import TimezoneFinder
 
-def get_planet_positions(jd):
-    planets = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu']
-    planet_ids = [swe.SUN, swe.MOON, swe.MARS, swe.MERCURY, swe.JUPITER, swe.VENUS, swe.SATURN, swe.MEAN_NODE]
+def get_julian_day(date_str, time_str):
+    """
+    Converts a date and time string to Julian Day.
+    """
+    dt = datetime.strptime(f"{date_str} {time_str}", "%d-%m-%Y %H:%M")
+    return swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60)
 
-    results = {}
-    for i, pid in enumerate(planet_ids):
-        lon, _ = swe.calc_ut(jd, pid)
-        results[planets[i]] = round(lon[0], 2)
+def get_moon_longitude(jd):
+    """
+    Returns the moon longitude for a given Julian day.
+    """
+    moon_pos = swe.calc_ut(jd, swe.MOON)[0]
+    return moon_pos[0]
 
-    # Ketu = opposite of Rahu
-    if 'Rahu' in results:
-        results['Ketu'] = (results['Rahu'] + 180) % 360
-
-    return results
-
-def calculate_dasha(jd):
-    # Dummy Dasha calculation for now
-    return {"dasha_period": "Venus Mahadasha - Mercury Antardasha"}
-
-def get_nakshatra(jd):
-    moon_lon, _ = swe.calc_ut(jd, swe.MOON)
-    nakshatra_index = int((moon_lon[0] % 360) / (360 / 27))
+def get_nakshatra(moon_longitude):
+    """
+    Returns nakshatra name and index (0-based).
+    Each nakshatra spans 13°20′ = 13.333... degrees.
+    """
+    nakshatra_index = int(moon_longitude / (360 / 27))
     nakshatras = [
-        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu",
-        "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta",
-        "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha", "Mula", "Purva Ashadha",
-        "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha", "Purva Bhadrapada",
-        "Uttara Bhadrapada", "Revati"
+        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha", "Ardra",
+        "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
+        "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha", "Mula",
+        "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
+        "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
     ]
-    return nakshatras[nakshatra_index]
+    return nakshatras[nakshatra_index], nakshatra_index
+
+def get_rashi(moon_longitude):
+    """
+    Returns the moon sign (Rashi) based on 30° spans.
+    """
+    rashi_index = int(moon_longitude / 30)
+    rashis = [
+        "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+        "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+    ]
+    return rashis[rashi_index], rashi_index
