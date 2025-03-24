@@ -1,72 +1,99 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from utils.chart_extractor import extract_chart_details
-from utils.dasha_calculator import get_current_dasha_periods
-from utils.daily_forecast import get_daily_forecast
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional
+import logging
+
 from utils.matchmaking import get_matchmaking_report
+from utils.kundli import get_kundli_data
+from utils.astro_report import generate_astro_pdf
 
-app = FastAPI()
+# Initialize logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# === Pydantic Schemas ===
+# Initialize FastAPI app
+app = FastAPI(
+    title="Navadharma API",
+    description="Astrology, Matchmaking and Report Generation API",
+    version="1.0.0"
+)
 
-class BirthDetails(BaseModel):
-    name: str
-    date_of_birth: str
-    time_of_birth: str
-    place_of_birth: str
+# CORS middleware (allow all for now, lock down for production)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
-class ForecastRequest(BirthDetails):
-    target_date: str = None
+# Request models
+class ReportRequest(BaseModel):
+    name: str = Field(..., description="Full name")
+    date: str = Field(..., example="1990-05-15", description="Date of birth (YYYY-MM-DD)")
+    time: str = Field(..., example="15:45", description="Time of birth (HH:MM)")
+    place: str = Field(..., description="Place of birth")
 
 class MatchRequest(BaseModel):
-    person1: BirthDetails
-    person2: BirthDetails
+    person1_name: str
+    person1_dob: str
+    person1_time: str
+    person1_place: str
+    person2_name: str
+    person2_dob: str
+    person2_time: str
+    person2_place: str
 
-# === ROUTES ===
+# Health check
+@app.get("/health", tags=["Health"])
+def health_check():
+    return {"status": "ok", "message": "Navadharma API is live"}
 
-@app.get("/")
-def read_root():
-    return {"message": "🪐 Navadharma Astrology API is live."}
+# Home endpoint
+@app.get("/", tags=["General"])
+def root():
+    return {"message": "Welcome to Navadharma API - Jyotish, Matchmaking, and Reports"}
 
-@app.post("/get-chart")
-def get_chart(details: BirthDetails):
+# Kundli data endpoint
+@app.get("/kundli-details", tags=["Kundli"])
+def get_kundli_details(
+    name: Optional[str] = None,
+    date: Optional[str] = None,
+    time: Optional[str] = None,
+    place: Optional[str] = None
+):
     try:
-        return extract_chart_details(
-            details.name,
-            details.date_of_birth,
-            details.time_of_birth,
-            details.place_of_birth
-        )
+        data = get_kundli_data(name=name, date=date, time=time, place=place)
+        return {"status": "success", "data": data}
     except Exception as e:
+        logger.exception("Error in kundli-details")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/get-dasha")
-def get_dasha(details: BirthDetails):
+# Report generation endpoint
+@app.post("/generate-report", tags=["Astrology"])
+def generate_report(data: ReportRequest):
     try:
-        return get_current_dasha_periods(
-            details.date_of_birth,
-            details.time_of_birth,
-            details.place_of_birth
-        )
+        logger.info(f"Generating report for {data.name}")
+        pdf_path = generate_astro_pdf(data.name, data.date, data.time, data.place)
+        return {"message": "Report generated successfully", "pdf_url": pdf_path}
     except Exception as e:
+        logger.exception("Failed to generate report")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/daily-forecast")
-def daily_forecast(request: ForecastRequest):
+# Matchmaking endpoint
+@app.post("/matchmaking", tags=["Matchmaking"])
+def matchmaking(data: MatchRequest):
     try:
-        return get_daily_forecast(
-            name=request.name,
-            dob=request.date_of_birth,
-            tob=request.time_of_birth,
-            pob=request.place_of_birth,
-            target_date=request.target_date
-        )
+        logger.info(f"Running matchmaking for {data.person1_name} & {data.person2_name}")
+        result = get_matchmaking_report(data)
+        return {"message": "Matchmaking report generated", "result": result}
     except Exception as e:
+        logger.exception("Matchmaking failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/matchmaking")
-def matchmaking(request: MatchRequest):
-    try:
-        return get_matchmaking_report(request.person1, request.person2)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# Fallback route for errors
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {str(exc)}")
+    return HTTPException(status_code=500, detail="An unexpected error occurred.")
