@@ -5,7 +5,7 @@
 
 from .kundli import (
     get_kundli_chart,
-    get_planetary_positions,
+    get_planet_positions,
     get_divisional_charts,
     get_lagna_info,
     get_dasha_periods,
