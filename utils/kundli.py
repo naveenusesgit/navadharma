@@ -79,14 +79,12 @@ def get_planetary_aspects(jd, lat, lon):
 def get_transit_predictions(jd, lat, lon):
     moon_pos, _ = swe.calc_ut(jd, swe.MOON)
     moon_sign = SIGNS[int(moon_pos[0] // 30)]
-    # Sample effects
     return {
         "moon_sign": moon_sign,
         "effects": "Heightened intuition, emotional growth. Good time for meditation and reflection."
     }
 
 # Charts (D1, D9, etc.)
-
 def get_kundli_chart(jd, lat, lon, divisional_chart="D1"):
     chart = {}
     factor = {"D1": 1, "D9": 9}.get(divisional_chart, 1)
@@ -99,6 +97,12 @@ def get_kundli_chart(jd, lat, lon, divisional_chart="D1"):
             "degree": round(div_long, 2)
         }
     return chart
+
+def get_divisional_charts(jd, lat, lon, charts=["D1", "D9"]):
+    result = {}
+    for chart in charts:
+        result[chart] = get_kundli_chart(jd, lat, lon, chart)
+    return result
 
 # PDF generator (simple)
 def generate_kundli_report_pdf(data):
@@ -145,5 +149,6 @@ __all__ = [
     "get_transit_predictions",
     "generate_kundli_report_pdf",
     "generate_full_kundli_prediction",
-    "get_kundli_chart"
+    "get_kundli_chart",
+    "get_divisional_charts"
 ]
