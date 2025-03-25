@@ -9,8 +9,6 @@ from .kundli import (
     get_lagna_info,
     get_dasha_periods,
     get_ashtakvarga,
-    get_remedies,
-    get_daily_prediction,
     get_matchmaking_report,
     generate_kundli_report,
 )
