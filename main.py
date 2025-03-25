@@ -1,82 +1,66 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
+from pydantic import BaseModel
 from utils.kundli import (
-    get_dasha_periods,
+    get_planet_positions,
     get_lagna_info,
+    get_dasha_periods,
+    get_nakshatra_details,
     get_planetary_aspects,
-    get_nakshatra_prediction,
-    get_transit_effects,
-    generate_kundli_report,
-    generate_daily_prediction,
-    get_matchmaking_report,
-    get_numerology_report,
-    get_remedies,
-    get_divisional_charts
+    get_transit_predictions,
+    generate_kundli_report_pdf,
+    generate_full_kundli_prediction
 )
-from utils.pdf_generator import generate_prediction_pdf
 
-app = FastAPI(title="Navadharma Jyotish API", version="1.0.0")
+app = FastAPI()
+
+
+class KundliRequest(BaseModel):
+    name: str
+    date: str  # Format: YYYY-MM-DD
+    time: str  # Format: HH:MM
+    place: str
 
 
 @app.get("/")
-def root():
-    return {"message": "Welcome to the Navadharma Jyotish API!"}
+def read_root():
+    return {"message": "Welcome to the Navadharma Kundli API"}
 
 
-@app.get("/kundli/dasha")
-def dasha_periods(name: str, date: str, time: str, place: str):
-    return get_dasha_periods(name, date, time, place)
+@app.post("/planet-positions")
+def planet_positions(req: KundliRequest):
+    return get_planet_positions(req.name, req.date, req.time, req.place)
 
 
-@app.get("/kundli/lagna")
-def lagna_info(name: str, date: str, time: str, place: str):
-    return get_lagna_info(name, date, time, place)
+@app.post("/lagna-info")
+def lagna_info(req: KundliRequest):
+    return get_lagna_info(req.name, req.date, req.time, req.place)
 
 
-@app.get("/kundli/aspects")
-def planetary_aspects(name: str, date: str, time: str, place: str):
-    return get_planetary_aspects(name, date, time, place)
+@app.post("/dasha-periods")
+def dasha_periods(req: KundliRequest):
+    return get_dasha_periods(req.name, req.date, req.time, req.place)
 
 
-@app.get("/kundli/nakshatra")
-def nakshatra_prediction(name: str, date: str, time: str, place: str):
-    return get_nakshatra_prediction(name, date, time, place)
+@app.post("/nakshatra-details")
+def nakshatra_details(req: KundliRequest):
+    return get_nakshatra_details(req.name, req.date, req.time, req.place)
 
 
-@app.get("/kundli/transits")
-def transits(name: str, date: str, time: str, place: str):
-    return get_transit_effects(name, date, time, place)
+@app.post("/planetary-aspects")
+def planetary_aspects(req: KundliRequest):
+    return get_planetary_aspects(req.name, req.date, req.time, req.place)
 
 
-@app.get("/kundli/daily-prediction")
-def daily_prediction(name: str, date: str, time: str, place: str):
-    return generate_daily_prediction(name, date, time, place)
+@app.post("/transit-predictions")
+def transit_predictions(req: KundliRequest):
+    return get_transit_predictions(req.name, req.date, req.time, req.place)
 
 
-@app.get("/kundli/report")
-def kundli_report(name: str, date: str, time: str, place: str):
-    return generate_kundli_report(name, date, time, place)
+@app.post("/generate-kundli-pdf")
+def generate_pdf(req: KundliRequest):
+    return generate_kundli_report_pdf(req.name, req.date, req.time, req.place)
 
 
-@app.get("/kundli/charts")
-def divisional_charts(name: str, date: str, time: str, place: str):
-    return get_divisional_charts(name, date, time, place)
-
-
-@app.get("/kundli/remedies")
-def remedies(name: str, date: str, time: str, place: str):
-    return get_remedies(name, date, time, place)
-
-
-@app.get("/kundli/pdf-prediction")
-def prediction_pdf(name: str, date: str, time: str, place: str):
-    return generate_prediction_pdf(name, date, time, place)
-
-
-@app.get("/matchmaking")
-def matchmaking(person1: str, person2: str):
-    return get_matchmaking_report(person1, person2)
-
-
-@app.get("/numerology")
-def numerology(name: str, birthdate: str):
-    return get_numerology_report(name, birthdate)
+@app.post("/generate-full-prediction")
+def generate_prediction(req: KundliRequest):
+    return generate_full_kundli_prediction(req.name, req.date, req.time, req.place)
