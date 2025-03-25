@@ -2,43 +2,52 @@
 
 from datetime import datetime
 
-def calculate_life_path_number(date_of_birth: str) -> int:
+def reduce_to_digit(n):
+    """Reduces a number to a single digit or master number (11, 22, 33)."""
+    while n > 9 and n not in [11, 22, 33]:
+        n = sum(int(digit) for digit in str(n))
+    return n
+
+def calculate_life_path_number(dob: str) -> int:
+    """
+    Calculate the Life Path Number from date of birth.
+    dob: string in 'YYYY-MM-DD' format
+    """
     try:
-        dob = datetime.strptime(date_of_birth, "%Y-%m-%d")
-    except ValueError:
-        raise ValueError("Invalid date format. Use YYYY-MM-DD.")
+        birth_date = datetime.strptime(dob, "%Y-%m-%d")
+        total = (
+            sum(int(d) for d in str(birth_date.year)) +
+            sum(int(d) for d in str(birth_date.month)) +
+            sum(int(d) for d in str(birth_date.day))
+        )
+        return reduce_to_digit(total)
+    except Exception as e:
+        raise ValueError("Invalid date format. Use YYYY-MM-DD.") from e
 
-    total = sum(int(char) for char in dob.strftime("%Y%m%d"))
+def get_numerology(name: str, dob: str) -> dict:
+    """
+    Main numerology function that returns life path number and message.
+    """
+    life_path = calculate_life_path_number(dob)
 
-    # Reduce to single digit (except 11, 22 which are master numbers)
-    while total > 9 and total not in (11, 22):
-        total = sum(int(d) for d in str(total))
-
-    return total
-
-def get_numerology_prediction(date_of_birth: str) -> dict:
-    try:
-        life_path = calculate_life_path_number(date_of_birth)
-    except ValueError as e:
-        return {"error": str(e)}
-
-    predictions = {
-        1: "You are a natural leader. This week is perfect for initiating new projects.",
-        2: "Harmony and balance are key. Focus on relationships and partnerships.",
-        3: "Creativity will shine. Good time for self-expression.",
-        4: "Discipline and structure will benefit you. Focus on building a solid foundation.",
-        5: "Expect change and excitement. Embrace flexibility.",
-        6: "Nurturing energy surrounds you. Prioritize home and loved ones.",
-        7: "Introspection brings clarity. Take time for spiritual pursuits.",
-        8: "Success and ambition drive you. Focus on career goals.",
-        9: "Compassion and service to others will bring fulfillment.",
-        11: "You have strong intuition and insight. Follow your higher calling.",
-        22: "You are a master builder. Your vision can manifest if you stay grounded."
+    messages = {
+        1: "You are a natural leader, ambitious and driven.",
+        2: "You are a peacemaker, sensitive and diplomatic.",
+        3: "You are expressive, social, and creative.",
+        4: "You are practical, disciplined, and grounded.",
+        5: "You are adventurous, dynamic, and freedom-loving.",
+        6: "You are responsible, nurturing, and harmonious.",
+        7: "You are introspective, analytical, and spiritual.",
+        8: "You are powerful, successful, and authoritative.",
+        9: "You are compassionate, idealistic, and humanitarian.",
+        11: "You are intuitive, visionary, and inspiring (Master Number).",
+        22: "You are a master builder, practical visionary (Master Number).",
+        33: "You are a master teacher, nurturing guide (Master Number).",
     }
 
-    message = predictions.get(life_path, "No prediction found.")
     return {
-        "date_of_birth": date_of_birth,
+        "name": name,
+        "dob": dob,
         "life_path_number": life_path,
-        "prediction": message
+        "message": messages.get(life_path, "You have a unique path.")
     }
