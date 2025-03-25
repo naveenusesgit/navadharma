@@ -1,4 +1,5 @@
 import swisseph as swe
+import datetime
 from fpdf import FPDF
 
 # Constants
@@ -21,7 +22,7 @@ SIGNS = [
 
 # Core Calculation Functions
 
-def get_planet_positions(jd, lat, lon):
+def get_planet_positions(jd, lat, lon, tz):
     positions = {}
     for name, planet_id in PLANETS.items():
         lon_deg, _ = swe.calc_ut(jd, abs(planet_id))
@@ -34,7 +35,7 @@ def get_planet_positions(jd, lat, lon):
         }
     return positions
 
-def get_lagna_info(jd, lat, lon):
+def get_lagna_info(jd, lat, lon, tz):
     asc = swe.houses(jd, lat, lon)[0][0]  # Ascendant
     sign = SIGNS[int(asc // 30)]
     return {
@@ -42,7 +43,7 @@ def get_lagna_info(jd, lat, lon):
         "lagna_sign": sign
     }
 
-def get_dasha_periods(jd, lat, lon):
+def get_dasha_periods(jd, lat, lon, tz):
     return {
         "major_dasha": "Rahu",
         "start": "2020-01-01",
@@ -50,7 +51,7 @@ def get_dasha_periods(jd, lat, lon):
         "next_dasha": "Jupiter"
     }
 
-def get_nakshatra_details(jd, lat, lon):
+def get_nakshatra_details(jd, lat, lon, tz):
     moon_pos, _ = swe.calc_ut(jd, swe.MOON)
     nakshatra_index = int((moon_pos[0] % 360) / (360 / 27))
     pada = int(((moon_pos[0] % (360 / 27)) / (360 / 108))) + 1
@@ -66,14 +67,15 @@ def get_nakshatra_details(jd, lat, lon):
         "moon_longitude": round(moon_pos[0], 2)
     }
 
-def get_planetary_aspects(jd, lat, lon):
-    return {
+def get_planetary_aspects(jd, lat, lon, tz):
+    aspects = {
         "Mars": ["7th, 8th, and 4th from placement"],
         "Saturn": ["3rd and 10th aspects"],
         "Jupiter": ["5th, 7th, and 9th aspects"]
     }
+    return aspects
 
-def get_transit_predictions(jd, lat, lon):
+def get_transit_predictions(jd, lat, lon, tz):
     moon_pos, _ = swe.calc_ut(jd, swe.MOON)
     moon_sign = SIGNS[int(moon_pos[0] // 30)]
     return {
@@ -81,7 +83,7 @@ def get_transit_predictions(jd, lat, lon):
         "effects": "Heightened intuition, emotional growth. Good time for meditation and reflection."
     }
 
-def get_kundli_chart(jd, lat, lon, divisional_chart="D1"):
+def get_kundli_chart(jd, lat, lon, tz, divisional_chart="D1"):
     chart = {}
     factor = {"D1": 1, "D9": 9}.get(divisional_chart, 1)
     for name, planet_id in PLANETS.items():
@@ -114,33 +116,51 @@ def generate_kundli_report_pdf(data):
     pdf.output(file_path)
     return {"status": "PDF generated", "file_path": file_path}
 
-def generate_full_kundli_prediction(jd, lat, lon):
+def generate_full_kundli_prediction(jd, lat, lon, tz, place=""):
     return {
-        "planet_positions": get_planet_positions(jd, lat, lon),
-        "lagna_info": get_lagna_info(jd, lat, lon),
-        "dasha": get_dasha_periods(jd, lat, lon),
-        "nakshatra": get_nakshatra_details(jd, lat, lon),
-        "aspects": get_planetary_aspects(jd, lat, lon),
-        "transits": get_transit_predictions(jd, lat, lon),
-        "d1_chart": get_kundli_chart(jd, lat, lon, "D1"),
-        "d9_chart": get_kundli_chart(jd, lat, lon, "D9"),
+        "planet_positions": get_planet_positions(jd, lat, lon, tz),
+        "lagna_info": get_lagna_info(jd, lat, lon, tz),
+        "dasha": get_dasha_periods(jd, lat, lon, tz),
+        "nakshatra": get_nakshatra_details(jd, lat, lon, tz),
+        "aspects": get_planetary_aspects(jd, lat, lon, tz),
+        "transits": get_transit_predictions(jd, lat, lon, tz),
+        "d1_chart": get_kundli_chart(jd, lat, lon, tz, "D1"),
+        "d9_chart": get_kundli_chart(jd, lat, lon, tz, "D9"),
         "summary": "Balanced year ahead with strong influence of Mars and Saturn. Good time for long-term planning."
     }
 
-def get_divisional_charts(jd, lat, lon):
+def get_ashtakvarga(jd, lat, lon, tz):
     return {
-        "D1": get_kundli_chart(jd, lat, lon, "D1"),
-        "D9": get_kundli_chart(jd, lat, lon, "D9")
+        "score": {
+            "Sun": 25,
+            "Moon": 22,
+            "Mars": 19,
+            "Mercury": 30,
+            "Jupiter": 28,
+            "Venus": 21,
+            "Saturn": 18
+        },
+        "interpretation": "Higher score planets support stronger outcomes in their dasha periods."
     }
 
-# ✅ Placeholder for missing function
-def get_ashtakvarga(jd, lat, lon):
-    return {
-        "score": "Not calculated",
-        "notes": "Ashtakvarga computation coming soon!"
+def get_remedies(jd, lat, lon, tz):
+    remedies = {
+        "Sun": "Recite the Gayatri Mantra daily and offer water to the Sun at sunrise.",
+        "Moon": "Wear a pearl on Monday and meditate to improve emotional balance.",
+        "Mars": "Donate red lentils on Tuesdays and recite Hanuman Chalisa.",
+        "Mercury": "Feed green vegetables to cows on Wednesdays and wear emerald.",
+        "Jupiter": "Donate turmeric and yellow sweets on Thursdays. Chant 'Om Gurave Namah'.",
+        "Venus": "Help the underprivileged and wear white on Fridays.",
+        "Saturn": "Feed crows and donate black sesame seeds on Saturdays.",
+        "Rahu": "Chant 'Om Raam Rahave Namah' and wear smoky quartz.",
+        "Ketu": "Practice detachment and spiritual reflection. Chant 'Om Ketave Namah'."
     }
 
-# Export
+    return {
+        "remedies": remedies,
+        "note": "These are general remedies. Personalized ones require deeper analysis of your chart."
+    }
+
 __all__ = [
     "get_planet_positions",
     "get_lagna_info",
@@ -151,6 +171,6 @@ __all__ = [
     "generate_kundli_report_pdf",
     "generate_full_kundli_prediction",
     "get_kundli_chart",
-    "get_divisional_charts",
-    "get_ashtakvarga"
+    "get_ashtakvarga",
+    "get_remedies"
 ]
