@@ -1,37 +1,44 @@
-def reduce_to_single_digit(n):
-    while n > 9 and n not in [11, 22, 33]:  # Allow master numbers
-        n = sum(map(int, str(n)))
-    return n
+# utils/numerology.py
 
-def calculate_numerology(name: str, dob: str):
-    import datetime
-    name_value = sum([(ord(c.upper()) - 64) for c in name if c.isalpha()])
+from datetime import datetime
 
-    # Life Path Number (from DOB)
-    day, month, year = map(int, dob.split("-"))
-    life_path = reduce_to_single_digit(day + month + year)
+def calculate_life_path_number(date_of_birth: str) -> int:
+    try:
+        dob = datetime.strptime(date_of_birth, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Invalid date format. Use YYYY-MM-DD.")
 
-    # Destiny Number (from name)
-    destiny = reduce_to_single_digit(name_value)
+    total = sum(int(char) for char in dob.strftime("%Y%m%d"))
 
-    # Soul Urge Number (vowels only)
-    vowels = "AEIOU"
-    soul_urge = reduce_to_single_digit(
-        sum([(ord(c.upper()) - 64) for c in name if c.upper() in vowels])
-    )
+    # Reduce to single digit (except 11, 22 which are master numbers)
+    while total > 9 and total not in (11, 22):
+        total = sum(int(d) for d in str(total))
 
-    # Personality Number (consonants only)
-    consonants = [c for c in name if c.isalpha() and c.upper() not in vowels]
-    personality = reduce_to_single_digit(
-        sum([(ord(c.upper()) - 64) for c in consonants])
-    )
+    return total
 
+def get_numerology_prediction(date_of_birth: str) -> dict:
+    try:
+        life_path = calculate_life_path_number(date_of_birth)
+    except ValueError as e:
+        return {"error": str(e)}
+
+    predictions = {
+        1: "You are a natural leader. This week is perfect for initiating new projects.",
+        2: "Harmony and balance are key. Focus on relationships and partnerships.",
+        3: "Creativity will shine. Good time for self-expression.",
+        4: "Discipline and structure will benefit you. Focus on building a solid foundation.",
+        5: "Expect change and excitement. Embrace flexibility.",
+        6: "Nurturing energy surrounds you. Prioritize home and loved ones.",
+        7: "Introspection brings clarity. Take time for spiritual pursuits.",
+        8: "Success and ambition drive you. Focus on career goals.",
+        9: "Compassion and service to others will bring fulfillment.",
+        11: "You have strong intuition and insight. Follow your higher calling.",
+        22: "You are a master builder. Your vision can manifest if you stay grounded."
+    }
+
+    message = predictions.get(life_path, "No prediction found.")
     return {
-        "name": name,
-        "dob": dob,
-        "lifePathNumber": life_path,
-        "destinyNumber": destiny,
-        "soulUrgeNumber": soul_urge,
-        "personalityNumber": personality,
-        "luckyNumbers": [life_path, destiny, (life_path + destiny) % 9 or 9],
+        "date_of_birth": date_of_birth,
+        "life_path_number": life_path,
+        "prediction": message
     }
