@@ -1,5 +1,4 @@
 import swisseph as swe
-import datetime
 from fpdf import FPDF
 
 # Constants
@@ -68,13 +67,11 @@ def get_nakshatra_details(jd, lat, lon):
     }
 
 def get_planetary_aspects(jd, lat, lon):
-    # Very basic aspects for demo
-    aspects = {
+    return {
         "Mars": ["7th, 8th, and 4th from placement"],
         "Saturn": ["3rd and 10th aspects"],
         "Jupiter": ["5th, 7th, and 9th aspects"]
     }
-    return aspects
 
 def get_transit_predictions(jd, lat, lon):
     moon_pos, _ = swe.calc_ut(jd, swe.MOON)
@@ -84,7 +81,6 @@ def get_transit_predictions(jd, lat, lon):
         "effects": "Heightened intuition, emotional growth. Good time for meditation and reflection."
     }
 
-# Charts (D1, D9, etc.)
 def get_kundli_chart(jd, lat, lon, divisional_chart="D1"):
     chart = {}
     factor = {"D1": 1, "D9": 9}.get(divisional_chart, 1)
@@ -98,13 +94,6 @@ def get_kundli_chart(jd, lat, lon, divisional_chart="D1"):
         }
     return chart
 
-def get_divisional_charts(jd, lat, lon, charts=["D1", "D9"]):
-    result = {}
-    for chart in charts:
-        result[chart] = get_kundli_chart(jd, lat, lon, chart)
-    return result
-
-# PDF generator (simple)
 def generate_kundli_report_pdf(data):
     pdf = FPDF()
     pdf.add_page()
@@ -125,7 +114,6 @@ def generate_kundli_report_pdf(data):
     pdf.output(file_path)
     return {"status": "PDF generated", "file_path": file_path}
 
-# Unified prediction
 def generate_full_kundli_prediction(jd, lat, lon):
     return {
         "planet_positions": get_planet_positions(jd, lat, lon),
@@ -139,7 +127,20 @@ def generate_full_kundli_prediction(jd, lat, lon):
         "summary": "Balanced year ahead with strong influence of Mars and Saturn. Good time for long-term planning."
     }
 
-# Exportable
+def get_divisional_charts(jd, lat, lon):
+    return {
+        "D1": get_kundli_chart(jd, lat, lon, "D1"),
+        "D9": get_kundli_chart(jd, lat, lon, "D9")
+    }
+
+# ✅ Placeholder for missing function
+def get_ashtakvarga(jd, lat, lon):
+    return {
+        "score": "Not calculated",
+        "notes": "Ashtakvarga computation coming soon!"
+    }
+
+# Export
 __all__ = [
     "get_planet_positions",
     "get_lagna_info",
@@ -150,5 +151,6 @@ __all__ = [
     "generate_kundli_report_pdf",
     "generate_full_kundli_prediction",
     "get_kundli_chart",
-    "get_divisional_charts"
+    "get_divisional_charts",
+    "get_ashtakvarga"
 ]
