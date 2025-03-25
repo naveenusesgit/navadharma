@@ -1,136 +1,76 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi import FastAPI
 from utils.kundli import (
-    generate_kundli_report,
     get_dasha_periods,
+    get_lagna_info,
+    get_planetary_aspects,
+    get_nakshatra_prediction,
     get_transit_effects,
-    get_nakshatra_info,
-    get_lagna_info
-)
-from utils.matchmaking import get_matchmaking_report
-from utils.numerology import get_numerology_report
-from utils.remedies import get_remedies
-from utils.predictions import get_daily_prediction
-from utils.pdf_generator import generate_pdf_report
-
-app = FastAPI(
-    title="Navadharma Astrology API",
-    description="Comprehensive API for Vedic astrology calculations and reports",
-    version="2.0.0"
+    generate_kundli_report,
+    generate_daily_prediction,
+    get_matchmaking_report,
+    get_numerology_report,
+    get_remedies,
+    get_divisional_charts
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI()
 
-# Request models
-class KundliInput(BaseModel):
-    name: str
-    date: str  # YYYY-MM-DD
-    time: str  # HH:MM
-    place: str
 
-class MatchmakingInput(BaseModel):
-    boy_name: str
-    boy_dob: str
-    boy_tob: str
-    boy_pob: str
-    girl_name: str
-    girl_dob: str
-    girl_tob: str
-    girl_pob: str
-
-class NameInput(BaseModel):
-    name: str
-
-# Root
 @app.get("/")
 def root():
-    return {"message": "🌟 Navadharma Astrology API is running!"}
+    return {"message": "Welcome to the Navadharma Jyotish API!"}
 
-# Kundli Report
-@app.post("/generate-report")
-def generate_report(data: KundliInput):
-    try:
-        return {"status": "success", "data": generate_kundli_report(**data.dict())}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-# Matchmaking
-@app.post("/matchmaking")
-def matchmaking(data: MatchmakingInput):
-    try:
-        return {"status": "success", "data": get_matchmaking_report(**data.dict())}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/dasha")
+def dasha_periods(name: str, date: str, time: str, place: str):
+    return get_dasha_periods(name, date, time, place)
 
-# Numerology
-@app.post("/numerology")
-def numerology(data: NameInput):
-    try:
-        return {"status": "success", "data": get_numerology_report(data.name)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-# Remedies
-@app.post("/remedies")
-def remedies(data: NameInput):
-    try:
-        return {"status": "success", "data": get_remedies(data.name)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/lagna")
+def lagna_info(name: str, date: str, time: str, place: str):
+    return get_lagna_info(name, date, time, place)
 
-# Daily Predictions
-@app.post("/daily-predictions")
-def predictions(data: KundliInput):
-    try:
-        return {"status": "success", "data": get_daily_prediction(**data.dict())}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-# Dasha Periods
-@app.post("/dasha")
-def dasha(data: KundliInput):
-    try:
-        return {"status": "success", "data": get_dasha_periods(**data.dict())}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/aspects")
+def planetary_aspects(name: str, date: str, time: str, place: str):
+    return get_planetary_aspects(name, date, time, place)
 
-# Transit effects
-@app.post("/transit")
-def transit(data: KundliInput):
-    try:
-        return {"status": "success", "data": get_transit_effects(**data.dict())}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-# PDF Report Generator
-@app.post("/generate-pdf")
-def generate_pdf(data: KundliInput):
-    try:
-        pdf_bytes = generate_pdf_report(**data.dict())
-        return {"status": "success", "pdf": pdf_bytes}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/nakshatra")
+def nakshatra_prediction(name: str, date: str, time: str, place: str):
+    return get_nakshatra_prediction(name, date, time, place)
 
-# Nakshatra Info
-@app.post("/nakshatra")
-def nakshatra(data: KundliInput):
-    try:
-        return {"status": "success", "data": get_nakshatra_info(**data.dict())}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-# Lagna Info
-@app.post("/lagna")
-def lagna(data: KundliInput):
-    try:
-        return {"status": "success", "data": get_lagna_info(**data.dict())}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/transits")
+def transits(name: str, date: str, time: str, place: str):
+    return get_transit_effects(name, date, time, place)
+
+
+@app.get("/daily-prediction")
+def daily_prediction(name: str, date: str, time: str, place: str):
+    return generate_daily_prediction(name, date, time, place)
+
+
+@app.get("/kundli-report")
+def kundli_report(name: str, date: str, time: str, place: str):
+    return generate_kundli_report(name, date, time, place)
+
+
+@app.get("/matchmaking")
+def matchmaking(person1: str, person2: str):
+    return get_matchmaking_report(person1, person2)
+
+
+@app.get("/numerology")
+def numerology(name: str, birthdate: str):
+    return get_numerology_report(name, birthdate)
+
+
+@app.get("/remedies")
+def remedies(name: str, date: str, time: str, place: str):
+    return get_remedies(name, date, time, place)
+
+
+@app.get("/charts")
+def divisional_charts(name: str, date: str, time: str, place: str):
+    return get_divisional_charts(name, date, time, place)
