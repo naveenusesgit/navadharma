@@ -9,19 +9,36 @@ from utils.kundli import (
     get_transit_predictions,
     get_kundli_chart,
     generate_kundli_report_pdf,
-    generate_full_kundli_prediction,
+    generate_full_kundli_prediction
 )
-from utils.daily_predictions import get_daily_prediction
+from utils.monthly_prediction import get_monthly_prediction
+from utils.weekly_prediction import get_weekly_prediction
+from utils.numerology import get_numerology
 
 app = FastAPI()
 
-
+# Base request model
 class KundliRequest(BaseModel):
     datetime: str
     place: str
     latitude: float
     longitude: float
     timezone: float
+
+# Monthly prediction input
+class MonthlyRequest(BaseModel):
+    rashi: str
+    month: str = None  # Optional
+
+# Weekly prediction input
+class WeeklyRequest(BaseModel):
+    rashi: str
+    week: str = None  # Optional
+
+# Numerology input
+class NumerologyRequest(BaseModel):
+    name: str
+    dob: str  # Format: YYYY-MM-DD
 
 
 @app.post("/planet-positions")
@@ -69,6 +86,16 @@ def generate_full_prediction(req: KundliRequest):
     return generate_full_kundli_prediction(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
 
 
-@app.post("/daily-prediction")
-def daily_prediction(req: KundliRequest):
-    return get_daily_prediction(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
+@app.post("/monthly-prediction")
+def monthly_prediction(req: MonthlyRequest):
+    return get_monthly_prediction(req.rashi, req.month)
+
+
+@app.post("/weekly-prediction")
+def weekly_prediction(req: WeeklyRequest):
+    return get_weekly_prediction(req.rashi, req.week)
+
+
+@app.post("/numerology")
+def numerology(req: NumerologyRequest):
+    return get_numerology(req.name, req.dob)
