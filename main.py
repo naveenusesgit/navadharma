@@ -10,6 +10,7 @@ from utils.kundli import (
     get_kundli_chart,
     generate_kundli_report_pdf,
     generate_full_kundli_prediction
+    get_ashtakvarga
 )
 
 app = FastAPI()
