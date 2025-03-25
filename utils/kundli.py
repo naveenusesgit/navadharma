@@ -1,118 +1,149 @@
 import swisseph as swe
-from datetime import datetime, timedelta
+import datetime
 from fpdf import FPDF
 
-# Placeholder functions for astrology calculations
-def calculate_planetary_positions(jd_ut):
-    planets = [swe.SUN, swe.MOON, swe.MARS, swe.MERCURY, swe.JUPITER,
-               swe.VENUS, swe.SATURN, swe.RAHU, swe.KETU]
+# Constants
+PLANETS = {
+    "Sun": swe.SUN,
+    "Moon": swe.MOON,
+    "Mars": swe.MARS,
+    "Mercury": swe.MERCURY,
+    "Jupiter": swe.JUPITER,
+    "Venus": swe.VENUS,
+    "Saturn": swe.SATURN,
+    "Rahu": swe.MEAN_NODE,
+    "Ketu": -swe.MEAN_NODE,
+}
+
+SIGNS = [
+    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+]
+
+# Core Calculation Functions
+
+def get_planet_positions(jd, lat, lon):
     positions = {}
-    for p in planets:
-        pos, _ = swe.calc_ut(jd_ut, p)
-        positions[swe.get_planet_name(p)] = pos[0]
+    for name, planet_id in PLANETS.items():
+        lon_deg, _ = swe.calc_ut(jd, abs(planet_id))
+        sign = SIGNS[int(lon_deg[0] // 30)]
+        retro = swe.calc_ut(jd, abs(planet_id))[3] < 0  # speed < 0 = retrograde
+        positions[name] = {
+            "degree": round(lon_deg[0], 2),
+            "sign": sign,
+            "retrograde": retro
+        }
     return positions
 
-def get_dasha_periods(name, date, time, place):
+def get_lagna_info(jd, lat, lon):
+    asc = swe.houses(jd, lat, lon)[0][0]  # Ascendant
+    sign = SIGNS[int(asc // 30)]
     return {
-        "name": name,
-        "dasha_periods": [
-            {"planet": "Sun", "start": "2025-01-01", "end": "2031-01-01"},
-            {"planet": "Moon", "start": "2031-01-01", "end": "2041-01-01"},
-        ]
+        "lagna_degree": round(asc, 2),
+        "lagna_sign": sign
     }
 
-def get_lagna_info(name, date, time, place):
+def get_dasha_periods(jd, lat, lon):
     return {
-        "name": name,
-        "lagna": "Aries",
-        "ascendant_degree": 5.3
+        "major_dasha": "Rahu",
+        "start": "2020-01-01",
+        "end": "2038-01-01",
+        "next_dasha": "Jupiter"
     }
 
-def get_planetary_aspects(name, date, time, place):
+def get_nakshatra_details(jd, lat, lon):
+    moon_pos, _ = swe.calc_ut(jd, swe.MOON)
+    nakshatra_index = int((moon_pos[0] % 360) / (360 / 27))
+    pada = int(((moon_pos[0] % (360 / 27)) / (360 / 108))) + 1
+    nakshatra_names = [
+        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu",
+        "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta", "Chitra",
+        "Swati", "Vishakha", "Anuradha", "Jyeshtha", "Mula", "Purva Ashadha", "Uttara Ashadha",
+        "Shravana", "Dhanishta", "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
+    ]
     return {
-        "name": name,
-        "aspects": [
-            {"from": "Mars", "to": "Moon", "type": "7th aspect"},
-            {"from": "Saturn", "to": "Sun", "type": "10th aspect"},
-        ]
+        "nakshatra": nakshatra_names[nakshatra_index],
+        "pada": pada,
+        "moon_longitude": round(moon_pos[0], 2)
     }
 
-def get_nakshatra_prediction(name, date, time, place):
+def get_planetary_aspects(jd, lat, lon):
+    # Very basic aspects for demo
+    aspects = {
+        "Mars": ["7th, 8th, and 4th from placement"],
+        "Saturn": ["3rd and 10th aspects"],
+        "Jupiter": ["5th, 7th, and 9th aspects"]
+    }
+    return aspects
+
+def get_transit_predictions(jd, lat, lon):
+    moon_pos, _ = swe.calc_ut(jd, swe.MOON)
+    moon_sign = SIGNS[int(moon_pos[0] // 30)]
+    # Sample effects
     return {
-        "nakshatra": "Ashwini",
-        "prediction": "You are energetic and take initiative. Today is favorable for beginnings."
+        "moon_sign": moon_sign,
+        "effects": "Heightened intuition, emotional growth. Good time for meditation and reflection."
     }
 
-def get_transit_effects(name, date, time, place):
-    return {
-        "moon_transit": {
-            "current_sign": "Libra",
-            "effects": "Emotional balance, focus on relationships and justice"
-        },
-        "retrogrades": [
-            {"planet": "Mercury", "status": "Retrograde", "effect": "Communication issues"}
-        ]
-    }
+# Charts (D1, D9, etc.)
 
-def generate_kundli_report(name, date, time, place):
+def get_kundli_chart(jd, lat, lon, divisional_chart="D1"):
+    chart = {}
+    factor = {"D1": 1, "D9": 9}.get(divisional_chart, 1)
+    for name, planet_id in PLANETS.items():
+        lon_deg, _ = swe.calc_ut(jd, abs(planet_id))
+        div_long = (lon_deg[0] * factor) % 360
+        sign = SIGNS[int(div_long // 30)]
+        chart[name] = {
+            "sign": sign,
+            "degree": round(div_long, 2)
+        }
+    return chart
+
+# PDF generator (simple)
+def generate_kundli_report_pdf(data):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Kundli Report for " + name, ln=True)
 
-    pdf.cell(200, 10, txt="Date: " + date + " Time: " + time + " Place: " + place, ln=True)
+    pdf.cell(200, 10, txt="Kundli Report", ln=1, align="C")
+    pdf.ln(10)
 
-    lagna = get_lagna_info(name, date, time, place)
-    pdf.cell(200, 10, txt=f"Lagna: {lagna['lagna']} ({lagna['ascendant_degree']}°)", ln=True)
+    for section, details in data.items():
+        pdf.set_font("Arial", "B", size=12)
+        pdf.cell(200, 10, txt=section.capitalize(), ln=1)
+        pdf.set_font("Arial", size=11)
+        for key, val in details.items():
+            pdf.cell(200, 8, txt=f"{key}: {val}", ln=1)
+        pdf.ln(5)
 
-    dasha = get_dasha_periods(name, date, time, place)
-    pdf.cell(200, 10, txt="Dasha Periods:", ln=True)
-    for dp in dasha['dasha_periods']:
-        pdf.cell(200, 10, txt=f"{dp['planet']} : {dp['start']} to {dp['end']}", ln=True)
+    file_path = "/tmp/kundli_report.pdf"
+    pdf.output(file_path)
+    return {"status": "PDF generated", "file_path": file_path}
 
-    nakshatra = get_nakshatra_prediction(name, date, time, place)
-    pdf.cell(200, 10, txt=f"Nakshatra: {nakshatra['nakshatra']}", ln=True)
-    pdf.multi_cell(0, 10, txt="Prediction: " + nakshatra['prediction'])
-
-    transit = get_transit_effects(name, date, time, place)
-    pdf.cell(200, 10, txt="Moon Transit Effects: " + transit['moon_transit']['effects'], ln=True)
-
-    filename = f"{name}_kundli_report.pdf"
-    pdf.output(f"static/{filename}")
-    return {"pdf_url": f"/static/{filename}"}
-
-def generate_daily_prediction(name, date, time, place):
+# Unified prediction
+def generate_full_kundli_prediction(jd, lat, lon):
     return {
-        "name": name,
-        "date": date,
-        "prediction": "A good day to focus on partnerships and creative pursuits. Avoid conflicts."
+        "planet_positions": get_planet_positions(jd, lat, lon),
+        "lagna_info": get_lagna_info(jd, lat, lon),
+        "dasha": get_dasha_periods(jd, lat, lon),
+        "nakshatra": get_nakshatra_details(jd, lat, lon),
+        "aspects": get_planetary_aspects(jd, lat, lon),
+        "transits": get_transit_predictions(jd, lat, lon),
+        "d1_chart": get_kundli_chart(jd, lat, lon, "D1"),
+        "d9_chart": get_kundli_chart(jd, lat, lon, "D9"),
+        "summary": "Balanced year ahead with strong influence of Mars and Saturn. Good time for long-term planning."
     }
 
-def get_matchmaking_report(person1, person2):
-    return {
-        "compatibility_score": 86,
-        "verdict": "Highly Compatible",
-        "notes": "Strong mental and emotional bonding. Minor adjustment needed in communication."
-    }
-
-def get_numerology_report(name, birthdate):
-    return {
-        "name": name,
-        "birth_number": 5,
-        "destiny_number": 8,
-        "summary": "You are driven, ambitious, and pragmatic. Balance material and emotional aspects."
-    }
-
-def get_remedies(name, date, time, place):
-    return {
-        "remedies": [
-            "Chant Hanuman Chalisa on Tuesdays",
-            "Wear Red Coral gemstone on right hand ring finger"
-        ]
-    }
-
-def get_divisional_charts(name, date, time, place):
-    return {
-        "D1": "Main birth chart info here...",
-        "D9": "Navamsa (spiritual-karma) chart data..."
-    }
+# Exportable
+__all__ = [
+    "get_planet_positions",
+    "get_lagna_info",
+    "get_dasha_periods",
+    "get_nakshatra_details",
+    "get_planetary_aspects",
+    "get_transit_predictions",
+    "generate_kundli_report_pdf",
+    "generate_full_kundli_prediction",
+    "get_kundli_chart"
+]
