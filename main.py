@@ -28,12 +28,12 @@ class KundliRequest(BaseModel):
 # Monthly prediction input
 class MonthlyRequest(BaseModel):
     rashi: str
-    month: str = None  # Optional
+    month: str = None
 
 # Weekly prediction input
 class WeeklyRequest(BaseModel):
     rashi: str
-    week: str = None  # Optional
+    week: str = None
 
 # Numerology input
 class NumerologyRequest(BaseModel):
@@ -43,59 +43,66 @@ class NumerologyRequest(BaseModel):
 
 @app.post("/planet-positions")
 def planet_positions(req: KundliRequest):
-    return get_planet_positions(req.datetime, req.latitude, req.longitude, req.timezone)
-
+    result = get_planet_positions(req.datetime, req.latitude, req.longitude, req.timezone)
+    return {"planet_positions": result}
 
 @app.post("/lagna-info")
 def lagna_info(req: KundliRequest):
-    return get_lagna_info(req.datetime, req.latitude, req.longitude, req.timezone)
-
+    result = get_lagna_info(req.datetime, req.latitude, req.longitude, req.timezone)
+    return {"lagna_info": result}
 
 @app.post("/dasha-periods")
 def dasha_periods(req: KundliRequest):
-    return get_dasha_periods(req.datetime, req.latitude, req.longitude, req.timezone)
-
+    result = get_dasha_periods(req.datetime, req.latitude, req.longitude, req.timezone)
+    return {"dasha_periods": result}
 
 @app.post("/nakshatra-details")
 def nakshatra_details(req: KundliRequest):
-    return get_nakshatra_details(req.datetime, req.latitude, req.longitude, req.timezone)
-
+    result = get_nakshatra_details(req.datetime, req.latitude, req.longitude, req.timezone)
+    return {"nakshatra_details": result}
 
 @app.post("/planetary-aspects")
 def planetary_aspects(req: KundliRequest):
-    return get_planetary_aspects(req.datetime, req.latitude, req.longitude, req.timezone)
-
+    result = get_planetary_aspects(req.datetime, req.latitude, req.longitude, req.timezone)
+    return {"planetary_aspects": result}
 
 @app.post("/transit-predictions")
 def transit_predictions(req: KundliRequest):
-    return get_transit_predictions(req.datetime, req.latitude, req.longitude, req.timezone)
-
+    result = get_transit_predictions(req.datetime, req.latitude, req.longitude, req.timezone)
+    return {"transit_predictions": result}
 
 @app.post("/kundli-chart")
 def kundli_chart(req: KundliRequest):
-    return get_kundli_chart(req.datetime, req.latitude, req.longitude, req.timezone)
-
+    result = get_kundli_chart(req.datetime, req.latitude, req.longitude, req.timezone)
+    return {"kundli_chart": result}
 
 @app.post("/generate-pdf-report")
 def generate_pdf_report(req: KundliRequest):
-    return generate_kundli_report_pdf(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
-
+    result = generate_kundli_report_pdf(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
+    return {"pdf_report": result}
 
 @app.post("/generate-full-prediction")
 def generate_full_prediction(req: KundliRequest):
-    return generate_full_kundli_prediction(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
+    result = generate_full_kundli_prediction(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
+    return {"full_prediction": result}
 
+# ✅ NEW endpoint for /generate-kundli
+@app.post("/generate-kundli")
+def generate_kundli(req: KundliRequest):
+    result = generate_full_kundli_prediction(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
+    return {"kundli": result}
 
 @app.post("/monthly-prediction")
 def monthly_prediction(req: MonthlyRequest):
-    return get_monthly_prediction(req.rashi, req.month)
-
+    result = get_monthly_prediction(req.rashi, req.month)
+    return {"monthly_prediction": result}
 
 @app.post("/weekly-prediction")
 def weekly_prediction(req: WeeklyRequest):
-    return get_weekly_prediction(req.rashi, req.week)
-
+    result = get_weekly_prediction(req.rashi, req.week)
+    return {"weekly_prediction": result}
 
 @app.post("/numerology")
 def numerology(req: NumerologyRequest):
-    return get_numerology(req.name, req.dob)
+    result = get_numerology(req.name, req.dob)
+    return {"numerology": result}
