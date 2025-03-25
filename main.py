@@ -13,7 +13,7 @@ from utils.kundli import (
 )
 from utils.monthly_prediction import get_monthly_prediction
 from utils.weekly_prediction import get_weekly_prediction
-from utils.numerology import get_numerology
+from utils.numerology import get_numerology_prediction
 
 app = FastAPI()
 
