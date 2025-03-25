@@ -1,6 +1,5 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
-
 from utils.kundli import (
     get_planet_positions,
     get_lagna_info,
