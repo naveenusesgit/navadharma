@@ -10,7 +10,6 @@ from .kundli import (
     get_dasha_periods,
     get_ashtakvarga,
     get_remedies,
-    get_numerology,
     get_daily_prediction,
     get_matchmaking_report,
     generate_kundli_report,
