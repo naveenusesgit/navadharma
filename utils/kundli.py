@@ -2,19 +2,12 @@ import swisseph as swe
 import datetime
 import pytz
 
-swe.set_ephe_path('/usr/share/ephe')  # Adjust if needed for your server
+swe.set_ephe_path('/usr/share/ephe')
 
-# Mapping of planetary names to Swiss Ephemeris IDs
 PLANET_IDS = {
-    "Sun": swe.SUN,
-    "Moon": swe.MOON,
-    "Mars": swe.MARS,
-    "Mercury": swe.MERCURY,
-    "Jupiter": swe.JUPITER,
-    "Venus": swe.VENUS,
-    "Saturn": swe.SATURN,
-    "Rahu": swe.MEAN_NODE,
-    "Ketu": swe.TRUE_NODE
+    "Sun": swe.SUN, "Moon": swe.MOON, "Mars": swe.MARS, "Mercury": swe.MERCURY,
+    "Jupiter": swe.JUPITER, "Venus": swe.VENUS, "Saturn": swe.SATURN,
+    "Rahu": swe.MEAN_NODE, "Ketu": swe.TRUE_NODE
 }
 
 NAKSHATRAS = [
@@ -25,44 +18,42 @@ NAKSHATRAS = [
 ]
 
 DASHA_SEQUENCE = [
-    ("Ketu", 7), ("Venus", 20), ("Sun", 6), ("Moon", 10),
-    ("Mars", 7), ("Rahu", 18), ("Jupiter", 16), ("Saturn", 19), ("Mercury", 17)
+    ("Ketu", 7), ("Venus", 20), ("Sun", 6), ("Moon", 10), ("Mars", 7),
+    ("Rahu", 18), ("Jupiter", 16), ("Saturn", 19), ("Mercury", 17)
 ]
 
-def parse_datetime(datetime_str, timezone_offset):
+def parse_datetime(datetime_str, tz_offset):
     dt = datetime.datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
-    local_dt = dt + datetime.timedelta(hours=timezone_offset)
+    local_dt = dt + datetime.timedelta(hours=tz_offset)
     jd = swe.julday(local_dt.year, local_dt.month, local_dt.day, local_dt.hour + local_dt.minute / 60.0)
     return jd, local_dt
 
 def get_planet_positions(datetime_str, lat, lon, tz):
     jd, _ = parse_datetime(datetime_str, tz)
-    positions = {}
-    for name, pid in PLANET_IDS.items():
-        lon_deg, _ = swe.calc_ut(jd, pid)
-        positions[name] = f"{lon_deg:.2f}°"
-    return {"positions": positions}
+    return {
+        name: f"{swe.calc_ut(jd, pid)[0]:.2f}°"
+        for name, pid in PLANET_IDS.items()
+    }
 
 def get_lagna_info(datetime_str, lat, lon, tz):
     jd, _ = parse_datetime(datetime_str, tz)
     cusps, ascmc = swe.houses(jd, lat, lon, b'P')
     lagna_deg = ascmc[0]
-    rashis = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
-    sign = rashis[int(lagna_deg // 30)]
+    rashis = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+              "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
     return {
-        "lagna": sign,
-        "degree": f"{lagna_deg:.2f}°",
-        "description": f"The Ascendant is in {sign} at {lagna_deg:.2f}°"
+        "lagna": rashis[int(lagna_deg // 30)],
+        "degree": f"{lagna_deg:.2f}°"
     }
 
 def get_nakshatra_details(datetime_str, lat, lon, tz):
     jd, _ = parse_datetime(datetime_str, tz)
     moon_long, _ = swe.calc_ut(jd, swe.MOON)
-    nak_index = int(moon_long // (360 / 27))
-    padam = int((moon_long % (360 / 27)) // 3.33) + 1
+    index = int(moon_long // (360 / 27))
+    pada = int((moon_long % (360 / 27)) // 3.33) + 1
     return {
-        "nakshatra": NAKSHATRAS[nak_index],
-        "padam": f"Padam {padam}"
+        "nakshatra": NAKSHATRAS[index],
+        "padam": f"Padam {pada}"
     }
 
 def get_dasha_periods(datetime_str, lat, lon, tz):
@@ -74,115 +65,134 @@ def get_dasha_periods(datetime_str, lat, lon, tz):
     start_index = nak_index % 9
     start_name, start_years = DASHA_SEQUENCE[start_index]
     remaining_years = (1 - nak_fraction) * start_years
+    dashas, curr = [], local_dt
 
-    dashas = []
-    summary = ""
-    current = local_dt
-    dasha_pointer = start_index
-
-    # First partial dasha
-    dasha_end = current + datetime.timedelta(days=remaining_years * 365.25)
+    dasha_end = curr + datetime.timedelta(days=remaining_years * 365.25)
     dashas.append({
-        "mahadasha": start_name,
-        "start": current.strftime("%Y-%m-%d"),
+        "mahadasha": start_name, "start": curr.strftime("%Y-%m-%d"),
         "end": dasha_end.strftime("%Y-%m-%d"),
-        "antardashas": get_antardashas(current, remaining_years, start_name)
+        "antardashas": get_antardashas(curr, remaining_years, start_name)
     })
-    summary += f"Current Mahadasha: **{start_name}** ({current.strftime('%Y-%m-%d')} to {dasha_end.strftime('%Y-%m-%d')})\n"
-    current = dasha_end
+    curr = dasha_end
     years_used = remaining_years
+    pointer = start_index
 
-    # Remaining dashas
     while years_used < 120:
-        dasha_pointer = (dasha_pointer + 1) % 9
-        name, years = DASHA_SEQUENCE[dasha_pointer]
-        dasha_end = current + datetime.timedelta(days=years * 365.25)
+        pointer = (pointer + 1) % 9
+        name, years = DASHA_SEQUENCE[pointer]
+        end = curr + datetime.timedelta(days=years * 365.25)
         dashas.append({
             "mahadasha": name,
-            "start": current.strftime("%Y-%m-%d"),
-            "end": dasha_end.strftime("%Y-%m-%d"),
-            "antardashas": get_antardashas(current, years, name)
+            "start": curr.strftime("%Y-%m-%d"),
+            "end": end.strftime("%Y-%m-%d"),
+            "antardashas": get_antardashas(curr, years, name)
         })
-        current = dasha_end
+        curr = end
         years_used += years
 
     return {
-        "summary": summary.strip(),
+        "summary": f"Current Mahadasha: **{start_name}** until {dasha_end.strftime('%Y-%m-%d')}",
         "dashas": dashas
     }
 
-def get_antardashas(start, years, maha_lord):
-    sequence = [d[0] for d in DASHA_SEQUENCE]
-    antars = []
-    total_days = years * 365.25
+def get_antardashas(start, years, lord):
+    total = years * 365.25
     curr = start
+    antars = []
 
-    for antar_lord in sequence:
-        antar_years = (dict(DASHA_SEQUENCE)[antar_lord] / 120) * years
-        antar_days = antar_years * 365.25
-        antar_end = curr + datetime.timedelta(days=antar_days)
-        antars.append({
-            "lord": antar_lord,
-            "start": curr.strftime("%Y-%m-%d"),
-            "end": antar_end.strftime("%Y-%m-%d")
-        })
-        curr = antar_end
+    for antar in [d[0] for d in DASHA_SEQUENCE]:
+        dur = (dict(DASHA_SEQUENCE)[antar] / 120) * years
+        days = dur * 365.25
+        end = curr + datetime.timedelta(days=days)
+        antars.append({"lord": antar, "start": curr.strftime("%Y-%m-%d"), "end": end.strftime("%Y-%m-%d")})
+        curr = end
     return antars
 
 def get_kundli_chart(datetime_str, lat, lon, tz):
     jd, _ = parse_datetime(datetime_str, tz)
-    rashis = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
-
+    rashis = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+              "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
     cusps, ascmc = swe.houses(jd, lat, lon, b'P')
     lagna_deg = ascmc[0]
     asc_sign = rashis[int(lagna_deg // 30)]
-
-    house_signs = [rashis[int(deg // 30) % 12] for deg in cusps[1:]]
-    planet_data = {}
-    for name, pid in PLANET_IDS.items():
-        lon, _ = swe.calc_ut(jd, pid)
-        planet_data[name] = lon
-
+    house_signs = [rashis[int(c // 30) % 12] for c in cusps[1:]]
+    planet_pos = {name: swe.calc_ut(jd, pid)[0] for name, pid in PLANET_IDS.items()}
     house_planets = {i+1: [] for i in range(12)}
-    for name, lon in planet_data.items():
-        house_index = next((i for i in range(11) if cusps[i+1] > lon >= cusps[i]), 11)
-        house_planets[house_index + 1].append(f"{name} ({lon:.2f}°)")
 
-    chart = []
-    for i in range(12):
-        chart.append({
-            "house": i + 1,
-            "sign": house_signs[i],
-            "planets": house_planets[i + 1]
-        })
+    for p, lon in planet_pos.items():
+        idx = next((i for i in range(11) if cusps[i+1] > lon >= cusps[i]), 11)
+        house_planets[idx+1].append(f"{p} ({lon:.2f}°)")
 
     return {
-        "ascendant": {
-            "sign": asc_sign,
-            "degree": f"{lagna_deg:.2f}°"
-        },
-        "houses": chart
+        "ascendant": {"sign": asc_sign, "degree": f"{lagna_deg:.2f}°"},
+        "houses": [{"house": i+1, "sign": house_signs[i], "planets": house_planets[i+1]} for i in range(12)]
     }
 
-def get_planetary_aspects(datetime_str, lat, lon, tz):
+def get_transit_predictions(datetime_str, lat, lon, tz):
     jd, _ = parse_datetime(datetime_str, tz)
-    longs = {name: swe.calc_ut(jd, pid)[0] for name, pid in PLANET_IDS.items()}
-    aspects = {}
+    now = datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
+    jd_transit = swe.julday(now.year, now.month, now.day, now.hour + now.minute / 60.0)
+    cusps, ascmc = swe.houses(jd, lat, lon, b'P')
+    lagna_deg = ascmc[0]
+    lagna_sign = int(lagna_deg // 30)
 
-    for p1 in longs:
-        aspects[p1] = []
-        for p2 in longs:
-            if p1 == p2:
-                continue
-            angle = (longs[p2] - longs[p1]) % 360
-            house_diff = round(angle / 30)
+    natal = {p: swe.calc_ut(jd, pid)[0] for p, pid in PLANET_IDS.items()}
+    transit = {p: swe.calc_ut(jd_transit, pid)[0] for p, pid in PLANET_IDS.items()}
 
-            if house_diff == 7:
-                aspects[p1].append(f"{p2} (7th aspect)")
-            if p1 == "Mars" and house_diff in [4, 8]:
-                aspects[p1].append(f"{p2} ({house_diff}th aspect)")
-            if p1 == "Jupiter" and house_diff in [5, 9]:
-                aspects[p1].append(f"{p2} ({house_diff}th aspect)")
-            if p1 == "Saturn" and house_diff in [3, 10]:
-                aspects[p1].append(f"{p2} ({house_diff}th aspect)")
-    return {"aspects": aspects}
+    house_transits = {
+        p: ((int(lon // 30) - lagna_sign) % 12) + 1 for p, lon in transit.items()
+    }
+
+    predictions = []
+    for planet, house in house_transits.items():
+        if planet == "Jupiter" and house == 5:
+            predictions.append("🟢 Jupiter in 5th — Good for studies, kids, creativity.")
+        elif planet == "Saturn" and house == 7:
+            predictions.append("🔴 Saturn in 7th — Test of relationships.")
+        elif planet == "Rahu" and house == 1:
+            predictions.append("🔴 Rahu in Lagna — High ambitions, possible illusions.")
+
+    return {
+        "house_transits": house_transits,
+        "predictions": predictions,
+        "gpt_summary": "\n".join(predictions)
+    }
+
+def get_planetary_strength(datetime_str, lat, lon, tz):
+    # Stubbed logic — You can plug in Shadbala calc later
+    positions = get_planet_positions(datetime_str, lat, lon, tz)
+    return {
+        planet: {"strength": 20.0, "afflictions": []} for planet in positions
+    }
+
+def get_yoga_summary(datetime_str, lat, lon, tz):
+    # Minimal sample
+    return [
+        {"name": "Raja Yoga", "active": True, "summary": "Promotes status and success."},
+        {"name": "Daridra Yoga", "active": False}
+    ]
+
+def get_remedies(planet_status: dict, house_mapping: dict, lang="en"):
+    results = []
+    for planet, afflictions in planet_status.items():
+        for aff in afflictions:
+            if aff == "weak":
+                results.append({
+                    "reason": f"{planet} is weak",
+                    "remedy": f"Chant mantra for {planet}, donate symbolic items."
+                })
+    return results
+
+def get_kundli_summary(datetime_str, lat, lon, tz):
+    lagna = get_lagna_info(datetime_str, lat, lon, tz)
+    nakshatra = get_nakshatra_details(datetime_str, lat, lon, tz)
+    dasha = get_dasha_periods(datetime_str, lat, lon, tz)
+    strengths = get_planetary_strength(datetime_str, lat, lon, tz)
+    transits = get_transit_predictions(datetime_str, lat, lon, tz)
+
+    return {
+        "lagna": lagna,
+        "nakshatra": nakshatra,
+        "dasha": dasha["summary"],
+        "gpt_summary": transits["gpt_summary"]
+    }
