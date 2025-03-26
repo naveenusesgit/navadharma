@@ -1,16 +1,56 @@
-from utils.gpt_summary import generate_gpt_summary
+# utils/remedies.py
 
-def get_remedies_from_gpt(astro_context: dict, lang="en"):
-    prompt = f"""
-    Based on this person's astrological profile:
-    - Lagna: {astro_context.get("lagna")}
-    - Current Dasha: {astro_context.get("currentDasha", {}).get("mahadasha", "")}
-    - Notable Yogas: {', '.join(astro_context.get("yogas", []))}
-    - Nakshatras: {', '.join([p.get('nakshatra', '') for p in astro_context.get('planets', []) if 'nakshatra' in p])}
+from utils.language_utils import translate_output
 
-    Suggest 2–3 spiritual or practical remedies they can follow to improve their well-being.
+# Define rules for common planetary weaknesses
+PLANETARY_REMEDIES = {
+    "Sun": {
+        "weak": "Offer water to the Sun at sunrise and chant Aditya Hridaya Stotra.",
+        "combust": "Avoid ego conflicts. Perform Surya Namaskar at sunrise regularly."
+    },
+    "Moon": {
+        "weak": "Chant Chandra Beej Mantra and wear white on Mondays.",
+        "afflicted": "Meditate and spend time near water bodies. Donate white items."
+    },
+    "Mars": {
+        "weak": "Chant Hanuman Chalisa daily and avoid anger.",
+        "afflicted": "Donate red lentils on Tuesdays. Worship Lord Hanuman."
+    },
+    "Mercury": {
+        "weak": "Recite Vishnu Sahasranama. Wear green clothes on Wednesdays.",
+        "afflicted": "Avoid arguments. Offer green moong daal to the needy."
+    },
+    "Jupiter": {
+        "weak": "Chant Guru Beej Mantra and offer yellow sweets on Thursdays.",
+        "afflicted": "Help teachers or elders. Donate yellow items like turmeric."
+    },
+    "Venus": {
+        "weak": "Chant Shukra Mantra and offer white flowers to Goddess Lakshmi.",
+        "afflicted": "Avoid overindulgence. Donate white clothes on Fridays."
+    },
+    "Saturn": {
+        "weak": "Chant Shani Chalisa and visit Shani temple on Saturdays.",
+        "afflicted": "Donate black items, mustard oil, or sesame seeds."
+    },
+    "Rahu": {
+        "afflicted": "Chant Rahu Beej Mantra. Feed birds and avoid deception.",
+    },
+    "Ketu": {
+        "afflicted": "Chant Ketu Beej Mantra. Light a camphor lamp daily."
+    }
+}
 
-    Write in {lang}. Keep it concise and culturally appropriate.
-    """
-
-    return generate_gpt_summary(prompt, lang=lang)
+HOUSE_REMEDIES = {
+    1: "Take care of your health. Focus on self-discipline and daily routine.",
+    2: "Watch your speech. Avoid unnecessary expenses and eat sattvic food.",
+    3: "Engage in courageous action. Support siblings and short travel planning.",
+    4: "Take care of your mother. Avoid stress at home. Do regular meditation.",
+    5: "Be disciplined in love and studies. Worship Lord Ganesha.",
+    6: "Control debts and enemies. Serve the poor. Avoid overworking.",
+    7: "Be mindful in relationships. Avoid legal entanglements.",
+    8: "Practice spiritual sadhana. Avoid secrets or manipulative behavior.",
+    9: "Seek blessings of gurus. Donate regularly.",
+    10: "Be ethical in career. Avoid shortcuts.",
+    11: "Keep your goals realistic. Avoid greed.",
+    12: "Do charity, mantra japa, and spiritual work."
+}
