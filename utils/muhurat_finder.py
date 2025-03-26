@@ -1,18 +1,10 @@
-from utils.panchanga import get_panchanga
-from utils.kundli import get_lagna_info
-from datetime import datetime, timedelta
-
-# Example marriage-friendly combos
-GOOD_TITHIS = ['2', '3', '5', '7', '10', '11']
-GOOD_NAKSHATRAS = ['Rohini', 'Uttara Phalguni', 'Hasta', 'Swati', 'Anuradha', 'Revati']
-GOOD_YOGAS = ['Sukarman', 'Siddhi', 'Dhruva', 'Harshana']
-GOOD_LAGNAS = ['Taurus', 'Libra', 'Cancer', 'Pisces']
-
-def find_muhurats(date_str, latitude, longitude, timezone_offset):
+def find_muhurats(date_str, latitude, longitude, timezone_offset, muhurat_type="marriage"):
+    config = MUHURAT_TYPES.get(muhurat_type.lower(), MUHURAT_TYPES["marriage"])
     muhurats = []
+    top_gpt_summary = ""
+
     base_time = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
 
-    # Every 2 hours in the day (5 AM – 9 PM)
     for hour in range(5, 21, 2):
         dt = base_time.replace(hour=hour, minute=0, second=0)
         iso = dt.isoformat() + "Z"
@@ -24,21 +16,52 @@ def find_muhurats(date_str, latitude, longitude, timezone_offset):
         nak = panchanga["nakshatra"].split("–")[0]
         yoga = panchanga["yoga"]
 
-        # Simple scoring rule
         score = 0
-        if tithi_num in GOOD_TITHIS: score += 1
-        if nak in GOOD_NAKSHATRAS: score += 1
-        if yoga in GOOD_YOGAS: score += 1
-        if lagna in GOOD_LAGNAS: score += 1
+        reasons = []
 
-        if score >= 3:
+        if tithi_num in config["tithis"]:
+            score += config["weights"]["tithi"]
+            reasons.append(f"Good Tithi ({tithi_num})")
+
+        if nak in config["nakshatras"]:
+            score += config["weights"]["nakshatra"]
+            reasons.append(f"Favorable Nakshatra ({nak})")
+
+        if yoga in config["yogas"]:
+            score += config["weights"]["yoga"]
+            reasons.append(f"Auspicious Yoga ({yoga})")
+
+        if lagna in config["lagnas"]:
+            score += config["weights"]["lagna"]
+            reasons.append(f"Supportive Lagna ({lagna})")
+
+        if score >= 6:
             muhurats.append({
                 "time": dt.strftime("%H:%M"),
                 "lagna": lagna,
                 "tithi": panchanga["tithi"],
                 "nakshatra": panchanga["nakshatra"],
                 "yoga": yoga,
-                "score": score
+                "score": score,
+                "reasons": reasons
             })
 
-    return muhurats
+    # GPT Summary (top muhurat)
+    if muhurats:
+        top = sorted(muhurats, key=lambda x: -x["score"])[0]
+        action = {
+            "marriage": "marriage ceremony",
+            "travel": "starting a journey",
+            "business": "launching a business",
+        }.get(muhurat_type, "important activity")
+
+        top_gpt_summary = (
+            f"Tomorrow’s best time for {action} is **{top['time']}** under **{top['lagna']} Lagna** "
+            f"and **{top['yoga']} Yoga**, with **{top['nakshatra']}** and **{top['tithi']}**. "
+            "This time is astrologically favorable and spiritually uplifting."
+        )
+
+    return {
+        "muhurats": muhurats,
+        "gpt_summary": top_gpt_summary
+    }
