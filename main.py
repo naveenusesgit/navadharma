@@ -17,6 +17,7 @@ from utils.weekly_prediction import get_weekly_prediction
 from utils.numerology import get_numerology
 from utils.interpretations import get_yogas  # ✅ Import yoga logic
 from utils.panchanga_calendar import generate_panchanga_calendar
+from utils.muhurat_finder import find_muhurats
 
 app = FastAPI()
 
@@ -125,3 +126,13 @@ def panchanga_calendar(
 ):
     result = generate_panchanga_calendar(start, days, lat, lon, tz)
     return {"calendar": result}
+
+@app.get("/muhurats")
+def muhurat_finder(
+    date: str = Query(..., description="Date in ISO format"),
+    lat: float = Query(...),
+    lon: float = Query(...),
+    tz: float = Query(...),
+):
+    result = find_muhurats(date, lat, lon, tz)
+    return {"muhurats": result}
