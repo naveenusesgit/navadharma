@@ -11,3 +11,4 @@ pytz
 timezonefinder
 openai
 flatlib==0.2.0
+openai>=1.0.0
