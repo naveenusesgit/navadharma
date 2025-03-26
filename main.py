@@ -133,6 +133,11 @@ def muhurat_finder(
     lat: float = Query(...),
     lon: float = Query(...),
     tz: float = Query(...),
+    type: str = Query("marriage", description="Type: marriage, travel, business")
 ):
-    result = find_muhurats(date, lat, lon, tz)
-    return {"muhurats": result}
+    result = find_muhurats(date, lat, lon, tz, type)
+    return {
+        "type": type,
+        "gpt_summary": result["gpt_summary"],
+        "muhurats": result["muhurats"]
+    }
