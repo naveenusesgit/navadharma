@@ -1,5 +1,4 @@
-from .kundli import PLANET_IDS, parse_datetime
-import swisseph as swe
+from .kundli import get_kundli_chart
 
 EXALTED_SIGNS = {
     "Sun": "Aries",
@@ -21,7 +20,9 @@ OWN_SIGNS = {
     "Saturn": ["Capricorn", "Aquarius"]
 }
 
-def get_yogas(chart_data):
+def get_yogas(datetime_str, latitude, longitude, timezone_offset):
+    chart_data = get_kundli_chart(datetime_str, latitude, longitude, timezone_offset)
+
     yogas = []
 
     asc_house = chart_data["houses"][0]  # 1st house
@@ -34,16 +35,16 @@ def get_yogas(chart_data):
             name = planet.split(" ")[0]
             planet_house_map[name] = house["house"]
 
-    # 🧠 Gajakesari Yoga: Moon + Jupiter in Kendra from Lagna
+    # Gajakesari Yoga
     moon_house = planet_house_map.get("Moon")
-    jup_house = planet_house_map.get("Jupiter")
-    if moon_house in kendra_houses and jup_house in kendra_houses:
+    jupiter_house = planet_house_map.get("Jupiter")
+    if moon_house in kendra_houses and jupiter_house in kendra_houses:
         yogas.append({
             "name": "Gajakesari Yoga",
-            "description": "Moon and Jupiter are in Kendra (1, 4, 7, or 10 houses) from the Lagna. Brings wisdom, fame, and leadership."
+            "description": "Moon and Jupiter are both in Kendra houses from Lagna. This indicates intelligence, fame, and respect."
         })
 
-    # 🧠 Panch Mahapurusha Yogas
+    # Panch Mahapurusha Yogas
     for planet in ["Mars", "Mercury", "Jupiter", "Venus", "Saturn"]:
         house_num = planet_house_map.get(planet)
         if not house_num:
@@ -52,18 +53,18 @@ def get_yogas(chart_data):
         if house_num in kendra_houses and (house_data["sign"] in OWN_SIGNS[planet] or house_data["sign"] == EXALTED_SIGNS[planet]):
             yogas.append({
                 "name": f"{planet} Mahapurusha Yoga",
-                "description": f"{planet} is in a Kendra and in own/exalted sign. Grants power, charisma, and success."
+                "description": f"{planet} is in Kendra and in own or exalted sign, indicating power and influence."
             })
 
-    # 🧠 Budhaditya Yoga
+    # Budhaditya Yoga
     if "Sun" in planet_house_map and "Mercury" in planet_house_map:
         if planet_house_map["Sun"] == planet_house_map["Mercury"]:
             yogas.append({
                 "name": "Budhaditya Yoga",
-                "description": "Sun and Mercury are in conjunction. Enhances intelligence, communication, and success in writing/speaking."
+                "description": "Sun and Mercury are conjunct. This enhances intelligence and communication abilities."
             })
 
-    # 🧠 Kemadruma Yoga
+    # Kemadruma Yoga
     moon_house_num = planet_house_map.get("Moon")
     if moon_house_num:
         before = house_lookup.get(((moon_house_num - 2) % 12) or 12)
@@ -72,7 +73,7 @@ def get_yogas(chart_data):
             if not before["planets"] and not after["planets"]:
                 yogas.append({
                     "name": "Kemadruma Yoga",
-                    "description": "No planets in 2nd or 12th from Moon. Indicates loneliness or lack of support unless canceled."
+                    "description": "No planets in 2nd or 12th from Moon. Can indicate emotional instability unless cancelled."
                 })
 
     return yogas
