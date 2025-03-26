@@ -2,7 +2,8 @@
 
 from utils.language_utils import translate_output
 
-# Define rules for common planetary weaknesses
+# -------------------- Remedy Dictionaries --------------------
+
 PLANETARY_REMEDIES = {
     "Sun": {
         "weak": "Offer water to the Sun at sunrise and chant Aditya Hridaya Stotra.",
@@ -54,3 +55,30 @@ HOUSE_REMEDIES = {
     11: "Keep your goals realistic. Avoid greed.",
     12: "Do charity, mantra japa, and spiritual work."
 }
+
+# -------------------- Main Remedy Generator --------------------
+
+def get_remedies(afflictions: dict, houses: dict, lang: str = "en") -> list:
+    """
+    Generate contextual remedies based on planetary afflictions and house placements.
+    Localizes remedies using utils.language_utils.translate_output()
+    """
+    remedies = []
+
+    for planet, issues in afflictions.items():
+        for issue in issues:
+            remedy = PLANETARY_REMEDIES.get(planet, {}).get(issue)
+            if remedy:
+                remedies.append({
+                    "reason": translate_output(f"{planet} is {issue}", lang),
+                    "remedy": translate_output(remedy, lang)
+                })
+
+    for planet, house in houses.items():
+        if house in HOUSE_REMEDIES:
+            remedies.append({
+                "reason": translate_output(f"{planet} is in House {house}", lang),
+                "remedy": translate_output(HOUSE_REMEDIES[house], lang)
+            })
+
+    return remedies
