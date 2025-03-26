@@ -1,4 +1,4 @@
-from .kundli import get_kundli_chart
+from .kundli import get_kundli_chart, get_dasha_periods
 import re
 
 EXALTED_SIGNS = {
@@ -31,12 +31,20 @@ DEBILITATED_SIGNS = {
     "Saturn": "Aries"
 }
 
+REMEDY_MAP = {
+    "Kemadruma Yoga": "Chant Moon mantras (e.g., Om Chandraya Namah), wear a Pearl, and practice emotional grounding through meditation.",
+    "Neecha Bhanga Raja Yoga": "Strengthen the cancelled planet through donations on its weekday, and wear its gemstone with guidance.",
+    "Debilitated Planet": "Avoid important decisions during its dasha. Chant the planet's mantra or do fasts (vrat)."
+}
+
 def parse_degree(planet_str):
     match = re.search(r"\((.*?)°\)", planet_str)
     return float(match.group(1)) if match else 0.0
 
 def get_yogas(datetime_str, latitude, longitude, timezone_offset):
     chart_data = get_kundli_chart(datetime_str, latitude, longitude, timezone_offset)
+    dasha_data = get_dasha_periods(datetime_str, latitude, longitude, timezone_offset)
+    active_dasha = dasha_data["dashas"][0]["mahadasha"]
 
     yogas = []
 
@@ -60,10 +68,11 @@ def get_yogas(datetime_str, latitude, longitude, timezone_offset):
                 "name": "Gajakesari Yoga",
                 "description": "Moon and Jupiter are in Kendra from Lagna.",
                 "score": 8,
-                "summary": "You possess strong intelligence and wisdom due to Gajakesari Yoga."
+                "active": "Jupiter" in active_dasha or "Moon" in active_dasha,
+                "summary": "Gajakesari Yoga brings fame, wisdom, and leadership."
             })
 
-    # Panch Mahapurusha
+    # Panch Mahapurusha Yogas
     for planet in ["Mars", "Mercury", "Jupiter", "Venus", "Saturn"]:
         hnum = planet_house_map.get(planet)
         if hnum and hnum in kendra_houses:
@@ -71,18 +80,20 @@ def get_yogas(datetime_str, latitude, longitude, timezone_offset):
             if sign in OWN_SIGNS[planet] or sign == EXALTED_SIGNS[planet]:
                 yogas.append({
                     "name": f"{planet} Mahapurusha Yoga",
-                    "description": f"{planet} is in a Kendra and in own or exalted sign.",
+                    "description": f"{planet} in Kendra in own/exalted sign.",
                     "score": 9,
-                    "summary": f"{planet} gives strength, charisma, and high success."
+                    "active": planet in active_dasha,
+                    "summary": f"{planet} gives success and strength through Mahapurusha Yoga."
                 })
 
     # Budhaditya Yoga
     if planet_house_map.get("Sun") == planet_house_map.get("Mercury"):
         yogas.append({
             "name": "Budhaditya Yoga",
-            "description": "Sun and Mercury conjunct in the same house.",
+            "description": "Sun and Mercury are conjunct.",
             "score": 7,
-            "summary": "You have sharp intellect and communication skills due to Budhaditya Yoga."
+            "active": "Sun" in active_dasha or "Mercury" in active_dasha,
+            "summary": "Excellent for intelligence, speech, teaching, and writing."
         })
 
     # Kemadruma Yoga
@@ -95,10 +106,12 @@ def get_yogas(datetime_str, latitude, longitude, timezone_offset):
                 "name": "Kemadruma Yoga",
                 "description": "No planets in 2nd or 12th from Moon.",
                 "score": 3,
-                "summary": "Kemadruma Yoga may cause emotional ups and downs or loneliness."
+                "active": "Moon" in active_dasha,
+                "summary": "May bring isolation or emotional fluctuation.",
+                "remedy": REMEDY_MAP["Kemadruma Yoga"]
             })
 
-    # Vipreet Raj Yogas: Harsha (6th lord in 6/8/12), Sarala (8th lord), Vimala (12th lord)
+    # Vipreet Raj Yogas
     lords = {
         "Harsha": 6,
         "Sarala": 8,
@@ -112,22 +125,34 @@ def get_yogas(datetime_str, latitude, longitude, timezone_offset):
                 if pl_house in dusthana_houses:
                     yogas.append({
                         "name": f"{name} Vipreet Raj Yoga",
-                        "description": f"Lord of {house_num}th (sign: {sign}) is in a dusthana.",
+                        "description": f"Lord of {house_num}th in dusthana.",
                         "score": 7,
-                        "summary": f"You have {name} Yoga, indicating rise from difficulties and karmic blessings."
+                        "active": planet in active_dasha,
+                        "summary": f"{name} Yoga gives rise through adversity and karmic protection."
                     })
 
-    # Neecha Bhanga Raja Yoga: Debilitated planet gets cancellation
+    # Neecha Bhanga
     for planet, deb_sign in DEBILITATED_SIGNS.items():
         if planet_sign_map.get(planet) == deb_sign:
-            # Check if another planet in same sign is exalted (e.g. Mars in Cancer, Jupiter in Cancer)
-            for other, ex_sign in EXALTED_SIGNS.items():
+            for other, exalted_sign in EXALTED_SIGNS.items():
                 if other != planet and planet_sign_map.get(other) == deb_sign:
                     yogas.append({
                         "name": "Neecha Bhanga Raja Yoga",
-                        "description": f"{planet} is debilitated in {deb_sign}, but Neecha Bhanga occurs due to {other} being exalted there.",
+                        "description": f"{planet} is debilitated in {deb_sign} but cancellation occurs due to exalted {other}.",
                         "score": 6,
-                        "summary": f"Your debilitated {planet} is cancelled by Neecha Bhanga, giving hidden strength."
+                        "active": planet in active_dasha or other in active_dasha,
+                        "summary": f"Neecha Bhanga restores the dignity of {planet} and empowers you through humility.",
+                        "remedy": REMEDY_MAP["Neecha Bhanga Raja Yoga"]
                     })
+            # If no cancellation, suggest remedy
+            else:
+                yogas.append({
+                    "name": f"{planet} Debilitated",
+                    "description": f"{planet} is in its debilitation sign ({deb_sign}).",
+                    "score": 2,
+                    "active": planet in active_dasha,
+                    "summary": f"Debilitated {planet} can reduce effectiveness unless strengthened.",
+                    "remedy": REMEDY_MAP["Debilitated Planet"]
+                })
 
     return yogas
