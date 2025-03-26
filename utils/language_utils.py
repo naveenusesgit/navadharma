@@ -10,17 +10,18 @@ try:
 except ImportError:
     client = None
 
-# Set up logging for errors
+# --- Logger ---
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# Optional: File logging
+# Optional: Enable file logging if needed
 # handler = logging.FileHandler("translation_errors.log")
 # logger.addHandler(handler)
 
 # --- Local Phrase Dictionary ---
 TRANSLATION_DICT = {
     "en": {
+        "Summary": "Summary",
         "Tithi": "Tithi",
         "Nakshatra": "Nakshatra",
         "Yoga": "Yoga",
@@ -39,8 +40,12 @@ TRANSLATION_DICT = {
         "Purnima": "Purnima",
         "Sankashti": "Sankashti",
         "Pradosham": "Pradosham",
+        "This indicates": "This indicates",
+        "Good period": "Good period",
+        "Challenging period": "Challenging period"
     },
     "hi": {
+        "Summary": "सारांश",
         "Tithi": "तिथि",
         "Nakshatra": "नक्षत्र",
         "Yoga": "योग",
@@ -59,8 +64,12 @@ TRANSLATION_DICT = {
         "Purnima": "पूर्णिमा",
         "Sankashti": "संकष्टी",
         "Pradosham": "प्रदोष व्रत",
+        "This indicates": "यह संकेत देता है कि",
+        "Good period": "अच्छा समय",
+        "Challenging period": "चुनौतीपूर्ण समय"
     },
     "ta": {
+        "Summary": "சுருக்கம்",
         "Tithi": "திதி",
         "Nakshatra": "நட்சத்திரம்",
         "Yoga": "யோகா",
@@ -79,39 +88,45 @@ TRANSLATION_DICT = {
         "Purnima": "பௌர்ணமி",
         "Sankashti": "சங்கடஹர சதுர்த்தி",
         "Pradosham": "பிரதோஷம்",
+        "This indicates": "இது குறிக்கிறது",
+        "Good period": "நல்ல காலம்",
+        "Challenging period": "சவாலான காலம்"
     },
-    # Add "te", "kn", "bn", "mr", etc. as needed
+    # Add more languages as needed
 }
 
-# --- Main Translation Function ---
+# --- Translation Function ---
 def translate_output(text: str, target_language: str = "en") -> str:
     """
-    Translate a known or unknown phrase into the target language using
-    local dictionary or OpenAI API if enabled.
+    Translates known phrases in the text using local dictionary.
+    Falls back to OpenAI translation if enabled.
     """
     if not text or not isinstance(text, str):
         return text
 
-    # Dictionary translation
+    # Try local dictionary replacement word by word
     if target_language in TRANSLATION_DICT:
-        base_dict = TRANSLATION_DICT.get("en", {})
-        if text in base_dict:
-            return TRANSLATION_DICT[target_language].get(text, text)
+        base = TRANSLATION_DICT.get("en", {})
+        translations = TRANSLATION_DICT[target_language]
 
-    # OpenAI fallback
+        translated = text
+        for eng_phrase, local_phrase in translations.items():
+            translated = translated.replace(eng_phrase, local_phrase)
+
+        return translated
+
+    # Fallback OpenAI translation if client is configured
     if client:
         try:
             response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": f"Translate to {target_language}"},
+                    {"role": "system", "content": f"Translate this to {target_language}"},
                     {"role": "user", "content": text}
                 ]
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            logger.warning(f"OpenAI translation error for '{text}' → {target_language}: {e}")
-            return text
+            logger.warning(f"[Translation Error] OpenAI failed for '{target_language}': {e}")
 
-    # Final fallback
-    return text
+    return text  # Fallback to original if nothing works
