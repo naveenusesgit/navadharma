@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi import Query
 from pydantic import BaseModel
 from utils.kundli import (
     get_planet_positions,
@@ -15,6 +16,7 @@ from utils.monthly_prediction import get_monthly_prediction
 from utils.weekly_prediction import get_weekly_prediction
 from utils.numerology import get_numerology
 from utils.interpretations import get_yogas  # ✅ Import yoga logic
+from utils.panchanga_calendar import generate_panchanga_calendar
 
 app = FastAPI()
 
@@ -112,3 +114,14 @@ def numerology(req: NumerologyRequest):
 def yoga_interpretations(req: KundliRequest):
     result = get_yogas(req.datetime, req.latitude, req.longitude, req.timezone)
     return {"yogas": result}
+
+@app.get("/panchanga-calendar")
+def panchanga_calendar(
+    start: str = Query(..., description="ISO start date"),
+    days: int = Query(7, description="Number of days"),
+    lat: float = Query(...),
+    lon: float = Query(...),
+    tz: float = Query(...),
+):
+    result = generate_panchanga_calendar(start, days, lat, lon, tz)
+    return {"calendar": result}
