@@ -157,3 +157,41 @@ def generate_pdf_report():
     return {
         "pdf_url": "https://navadharma.onrender.com/static/kundli_report.pdf"
     }
+
+def get_planetary_aspects(datetime_str, latitude, longitude, timezone_offset):
+    jd, _ = parse_datetime(datetime_str, timezone_offset)
+    planet_longitudes = {}
+
+    for name, planet_id in PLANET_IDS.items():
+        lon, _ = swe.calc_ut(jd, planet_id)
+        planet_longitudes[name] = lon
+
+    aspects = {}
+
+    for planet in planet_longitudes:
+        aspects[planet] = []
+
+        for target in planet_longitudes:
+            if planet == target:
+                continue
+
+            angle = (planet_longitudes[target] - planet_longitudes[planet]) % 360
+            house_distance = round(angle / 30)
+
+            # Default 7th aspect for all planets
+            if house_distance == 7:
+                aspects[planet].append(f"{target} (7th aspect)")
+
+            # Mars: 4th and 8th
+            if planet == "Mars" and house_distance in [4, 8]:
+                aspects[planet].append(f"{target} ({house_distance}th aspect)")
+
+            # Jupiter: 5th and 9th
+            if planet == "Jupiter" and house_distance in [5, 9]:
+                aspects[planet].append(f"{target} ({house_distance}th aspect)")
+
+            # Saturn: 3rd and 10th
+            if planet == "Saturn" and house_distance in [3, 10]:
+                aspects[planet].append(f"{target} ({house_distance}th aspect)")
+
+    return {"aspects": aspects}
