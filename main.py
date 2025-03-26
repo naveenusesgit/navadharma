@@ -9,7 +9,6 @@ from utils.kundli import (
     get_planetary_aspects,
     get_transit_predictions,
     get_kundli_chart,
-    generate_kundli_report_pdf,
 )
 from utils.monthly_prediction import get_monthly_prediction
 from utils.weekly_prediction import get_weekly_prediction
@@ -18,6 +17,7 @@ from utils.interpretations import get_yogas  # ✅ Import yoga logic
 from utils.panchanga_calendar import generate_panchanga_calendar
 from utils.muhurat_finder import find_muhurats
 from utils.full_kundli_prediction import generate_full_kundli_prediction
+from utils.pdf_utils import generate_kundli_report_pdf
 
 app = FastAPI()
 
