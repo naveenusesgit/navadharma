@@ -238,3 +238,86 @@ def get_planetary_aspects(datetime_str, latitude, longitude, timezone_offset):
                 aspects[planet].append(f"{target} ({house_distance}th aspect)")
 
     return {"aspects": aspects}
+
+def get_transit_predictions(datetime_str, latitude, longitude, timezone_offset):
+    import pytz
+    import math
+    from datetime import datetime as dt
+
+    jd_natal, local_dt = parse_datetime(datetime_str, timezone_offset)
+
+    # 1. Get Lagna for proper house mapping
+    cusps, ascmc = swe.houses(jd_natal, latitude, longitude.encode(), b'P')
+    lagna_deg = ascmc[0]
+    lagna_sign = int(lagna_deg // 30)
+
+    # 2. Get Natal Planet Positions
+    natal_positions = {}
+    for name, pid in PLANET_IDS.items():
+        lon, _ = swe.calc_ut(jd_natal, pid)
+        natal_positions[name] = lon
+
+    # 3. Get Transit Planet Positions (Today)
+    now = dt.utcnow().replace(tzinfo=pytz.utc)
+    jd_transit = swe.julday(now.year, now.month, now.day, now.hour + now.minute / 60.0)
+
+    transit_positions = {}
+    for name, pid in PLANET_IDS.items():
+        lon, _ = swe.calc_ut(jd_transit, pid)
+        transit_positions[name] = lon
+
+    # 4. Compute relative house transit (from Lagna)
+    house_transits = {}
+    rashis = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+              "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
+
+    for planet, lon in transit_positions.items():
+        sign = int(lon // 30)
+        rel_house = ((sign - lagna_sign) % 12) + 1
+        house_transits[planet] = rel_house
+
+    # 5. Generate predictions
+    predictions = []
+    remedies = []
+
+    for planet, house in house_transits.items():
+        if planet == "Jupiter":
+            if house == 5:
+                predictions.append("🟢 Jupiter is transiting your 5th house — Favorable for children, learning, and creative ventures.")
+            elif house == 8:
+                predictions.append("🔴 Jupiter in 8th — Watch out for spiritual detachment and inheritance matters.")
+                remedies.append("🧘 Donate saffron or turmeric on Thursdays.")
+        elif planet == "Saturn":
+            if house == 7:
+                predictions.append("🔴 Saturn in 7th — Test of partnerships and long-term relationships.")
+                remedies.append("🧘 Chant Hanuman Chalisa every Tuesday.")
+            elif house == 10:
+                predictions.append("🟢 Saturn in 10th — Slow but steady career growth.")
+        elif planet == "Rahu":
+            if house == 1:
+                predictions.append("🔴 Rahu in Lagna — Heightened desire and illusion; avoid impulsive decisions.")
+                remedies.append("🧘 Chant Om Ram Rahave Namah for clarity.")
+        elif planet == "Ketu":
+            if house == 7:
+                predictions.append("🔴 Ketu in 7th — Spiritualizing relationships or disconnection in marriage.")
+                remedies.append("🧘 Meditate daily; avoid isolating yourself.")
+
+    # 6. Aspect overlay (example: Saturn on Moon)
+    moon_deg = natal_positions["Moon"]
+    saturn_deg = transit_positions["Saturn"]
+    angle = abs((saturn_deg - moon_deg) % 360)
+    if angle < 10 or abs(angle - 180) < 10:
+        predictions.append("🔴 Transit Saturn is strongly influencing your natal Moon — emotional pressure or isolation.")
+        remedies.append("🧘 Fasting on Saturdays and lighting sesame oil lamp is advised.")
+
+    if not predictions:
+        predictions.append("🟢 Current transits suggest a balanced period with no major malefic influences.")
+
+    return {
+        "natal_positions": {k: f"{v:.2f}°" for k, v in natal_positions.items()},
+        "transit_positions": {k: f"{v:.2f}°" for k, v in transit_positions.items()},
+        "house_transits": {k: f"House {v}" for k, v in house_transits.items()},
+        "predictions": predictions,
+        "remedies": list(set(remedies)),
+        "gpt_summary": "\n".join(predictions)
+    }
