@@ -1,3 +1,7 @@
+# utils/deity_map.py
+
+from utils.language_utils import translate_output
+
 GOAL_DEITY_MAP = {
     "marriage": {
         "deity": "Parvati & Shiva",
@@ -25,3 +29,17 @@ GOAL_DEITY_MAP = {
         "reason": "For general peace, balance and spiritual growth."
     }
 }
+
+
+def get_deity_recommendation(goal_type: str = "default", lang: str = "en") -> dict:
+    """
+    Returns a deity recommendation for a specific goal type.
+    Localizes reason and deity name using optional language.
+    """
+    recommendation = GOAL_DEITY_MAP.get(goal_type.lower(), GOAL_DEITY_MAP["default"])
+
+    return {
+        "deity": translate_output(recommendation["deity"], lang),
+        "mantra": recommendation["mantra"],  # Mantras are kept in Devanagari with transliteration
+        "reason": translate_output(recommendation["reason"], lang)
+    }
