@@ -1,3 +1,5 @@
+from fastapi.staticfiles import StaticFiles
+import os
 from fastapi import FastAPI
 from fastapi import Query
 from pydantic import BaseModel
