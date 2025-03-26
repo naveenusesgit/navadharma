@@ -1,5 +1,3 @@
-# utils/models.py
-
 from pydantic import BaseModel
 
 class KundliRequest(BaseModel):
