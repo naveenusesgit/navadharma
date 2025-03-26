@@ -143,9 +143,52 @@ def get_antardashas(start_date, maha_years, maha_lord):
         curr = antar_end
     return antars
 
-def get_kundli_chart():
+def get_kundli_chart(datetime_str, latitude, longitude, timezone_offset):
+    jd, _ = parse_datetime(datetime_str, timezone_offset)
+
+    rashis = [
+        "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+        "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+    ]
+
+    # Get house cusps and lagna
+    cusps, ascmc = swe.houses(jd, latitude, longitude.encode(), b'P')
+    lagna_deg = ascmc[0]
+    asc_sign = rashis[int(lagna_deg // 30)]
+
+    # Get sign of each house cusp
+    house_signs = []
+    for cusp_deg in cusps[1:]:  # 1 to 12 (0 is unused)
+        house_sign = rashis[int(cusp_deg // 30) % 12]
+        house_signs.append(house_sign)
+
+    # Get positions of all planets
+    planet_data = {}
+    for name, pid in PLANET_IDS.items():
+        lon, _ = swe.calc_ut(jd, pid)
+        planet_data[name] = lon
+
+    # Assign planets to houses
+    house_planets = {i+1: [] for i in range(12)}
+    for name, lon in planet_data.items():
+        house_index = next((i for i in range(11) if cusps[i+1] > lon >= cusps[i]), 11)
+        house_planets[house_index + 1].append(f"{name} ({lon:.2f}°)")
+
+    # Combine chart data
+    chart = []
+    for i in range(12):
+        chart.append({
+            "house": i + 1,
+            "sign": house_signs[i],
+            "planets": house_planets[i + 1]
+        })
+
     return {
-        "chart": "Kundli chart feature under development."
+        "ascendant": {
+            "sign": asc_sign,
+            "degree": f"{lagna_deg:.2f}°"
+        },
+        "houses": chart
     }
 
 def generate_full_prediction():
