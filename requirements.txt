@@ -10,3 +10,4 @@ matplotlib
 pytz
 timezonefinder
 openai
+flatlib==0.2.0
