@@ -91,8 +91,15 @@ def generate_full_prediction(req: KundliRequest):
     return {"full_prediction": result}
 
 @app.post("/generate-kundli")
-def generate_kundli(req: KundliRequest):
-    result = generate_full_kundli_prediction(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
+def generate_kundli(req: KundliRequest, goal: str = "business"):
+    result = generate_full_kundli_prediction(
+        req.datetime,
+        req.place,
+        req.latitude,
+        req.longitude,
+        req.timezone,
+        goal=goal  # ✅ New param added
+    )
     return {"kundli": result}
 
 @app.post("/monthly-prediction")
