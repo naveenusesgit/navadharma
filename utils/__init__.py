@@ -6,8 +6,7 @@ from .kundli import (
     get_planetary_aspects,
     get_transit_predictions,
     get_kundli_chart,
-    generate_full_kundli_prediction,
 )
 
-# Do NOT include get_daily_prediction here
-# It's managed separately in daily_predictions.py
+# Do NOT import generate_full_kundli_prediction here
+# It now lives in full_kundli_prediction.py
