@@ -1,22 +1,38 @@
 from .kundli import get_dasha_periods
 from .interpretations import get_yogas
-from .remedies import get_remedies
 from .flatlib_strength import get_planetary_strength_flatlib as get_planetary_strength
 from .muhurat_finder import find_muhurats
 from .deity_map import get_deity_recommendation
+from utils.remedies import get_remedies
 
 
-def generate_summary(datetime_str, latitude, longitude, timezone_offset, muhurat_type="business"):
+def generate_summary(datetime_str, latitude, longitude, timezone_offset, muhurat_type="business", lang="en"):
     # 🔮 Core Calculations
     dasha = get_dasha_periods(datetime_str, latitude, longitude, timezone_offset)
     yogas = get_yogas(datetime_str, latitude, longitude, timezone_offset)
-    remedies = get_remedies(datetime_str, latitude, longitude, timezone_offset)
     strengths = get_planetary_strength(datetime_str, latitude, longitude, timezone_offset)
 
+    # 👁️‍🗨️ Extract active Mahadasha
     active_dasha = dasha["dashas"][0]["mahadasha"]
     dasha_score = strengths.get(active_dasha, 20.0)
 
-    # 🧘 Begin building the Vedic summary
+    # 🧠 Build planetary weakness/affliction map
+    planetary_status = {
+        planet: details.get("afflictions", [])
+        for planet, details in strengths.items()
+        if isinstance(details, dict) and details.get("afflictions")
+    }
+
+    # 🏠 House Mapping — placeholder until real chart integration
+    house_mapping = {
+        planet: details.get("house") for planet, details in strengths.items()
+        if isinstance(details, dict) and details.get("house") is not None
+    }
+
+    # 🪬 Remedies — Localized and contextual
+    remedies = get_remedies(planetary_status, house_mapping, lang=lang)
+
+    # 🕉️ Vedic Summary Builder
     summary = f"🕉️ You are currently in **{active_dasha} Mahadasha** (Strength: {dasha_score}/40).\n\n"
 
     # ✨ Active Yogas
@@ -41,13 +57,13 @@ def generate_summary(datetime_str, latitude, longitude, timezone_offset, muhurat
         for r in remedies:
             summary += f"- **{r['reason']}**: {r['remedy']}\n"
 
-    # ⏰ Muhurat (goal-aware)
+    # ⏰ Muhurat
     muhurat_result = find_muhurats(datetime_str, latitude, longitude, timezone_offset, muhurat_type)
     muhurat_summary = muhurat_result.get("gpt_summary", "")
     if muhurat_summary:
         summary += f"\n\n🕐 **Today's Muhurat Recommendation**\n{muhurat_summary}"
 
-    # 🙏 Goal-based Deity & Mantra
+    # 🙏 Deity Guidance
     deity_info = get_deity_recommendation(muhurat_type)
     if deity_info:
         summary += (
@@ -56,7 +72,7 @@ def generate_summary(datetime_str, latitude, longitude, timezone_offset, muhurat
             f"\n🕉️ {deity_info['reason']}"
         )
 
-    # 🧠 GPT Prompt for spiritual summary
+    # 🧠 GPT Prompt
     gpt_prompt = f"""
 You are a traditional Vedic astrologer. Interpret the following chart summary:
 
