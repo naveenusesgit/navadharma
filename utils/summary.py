@@ -3,20 +3,20 @@ from .interpretations import get_yogas
 from .remedies import get_remedies
 from .flatlib_strength import get_planetary_strength_flatlib as get_planetary_strength
 from .muhurat_finder import find_muhurats
+from .deity_map import get_deity_recommendation
 
 
 def generate_summary(datetime_str, latitude, longitude, timezone_offset, muhurat_type="business"):
-    # 📿 Get core astrology data
+    # 🔮 Core Calculations
     dasha = get_dasha_periods(datetime_str, latitude, longitude, timezone_offset)
     yogas = get_yogas(datetime_str, latitude, longitude, timezone_offset)
     remedies = get_remedies(datetime_str, latitude, longitude, timezone_offset)
     strengths = get_planetary_strength(datetime_str, latitude, longitude, timezone_offset)
 
-    # 🔱 Determine current Mahadasha and score
     active_dasha = dasha["dashas"][0]["mahadasha"]
     dasha_score = strengths.get(active_dasha, 20.0)
 
-    # 🧘 Build textual summary
+    # 🧘 Begin building the Vedic summary
     summary = f"🕉️ You are currently in **{active_dasha} Mahadasha** (Strength: {dasha_score}/40).\n\n"
 
     # ✨ Active Yogas
@@ -28,7 +28,7 @@ def generate_summary(datetime_str, latitude, longitude, timezone_offset, muhurat
     else:
         summary += "No yogas are currently active in this Dasha.\n"
 
-    # ⚠️ Challenging Yogas
+    # ⚠️ Difficult Yogas
     difficult_yogas = [y for y in yogas if y.get("score", 5) <= 4]
     if difficult_yogas:
         summary += "\n⚠️ Challenges:\n"
@@ -41,34 +41,46 @@ def generate_summary(datetime_str, latitude, longitude, timezone_offset, muhurat
         for r in remedies:
             summary += f"- **{r['reason']}**: {r['remedy']}\n"
 
-    # 🧠 GPT Prompt for fine-tuned astrology bot
+    # ⏰ Muhurat (goal-aware)
+    muhurat_result = find_muhurats(datetime_str, latitude, longitude, timezone_offset, muhurat_type)
+    muhurat_summary = muhurat_result.get("gpt_summary", "")
+    if muhurat_summary:
+        summary += f"\n\n🕐 **Today's Muhurat Recommendation**\n{muhurat_summary}"
+
+    # 🙏 Goal-based Deity & Mantra
+    deity_info = get_deity_recommendation(muhurat_type)
+    if deity_info:
+        summary += (
+            f"\n\n🙏 **Recommended Deity**: {deity_info['deity']}"
+            f"\n📿 **Mantra**: {deity_info['mantra']}"
+            f"\n🕉️ {deity_info['reason']}"
+        )
+
+    # 🧠 GPT Prompt for spiritual summary
     gpt_prompt = f"""
-You are a traditional Vedic astrologer. Interpret the following:
+You are a traditional Vedic astrologer. Interpret the following chart summary:
 
 - Active Mahadasha: {active_dasha} (Strength: {dasha_score}/40)
 - Active Yogas: {', '.join([y['name'] for y in active_yogas]) or 'None'}
 - Difficult Yogas: {', '.join([y['name'] for y in difficult_yogas]) or 'None'}
 - Remedies: {', '.join([r['remedy'] for r in remedies]) or 'None'}
+- Recommended Deity: {deity_info['deity']} | Mantra: {deity_info['mantra']}
+- Muhurat: {muhurat_summary or 'None'}
 
-Generate a 3–5 sentence prediction. Speak in a calm, devotional tone.
+Respond in 3–5 sentences using a calm, spiritual, and devotional tone.
 """.strip()
 
-    # 🧠 LangChain / GPT context object
+    # 🧠 Context for chaining to GPT/PDF/UI
     context = {
         "activeMahadasha": active_dasha,
         "dashaStrength": dasha_score,
         "activeYogas": active_yogas,
         "difficultYogas": difficult_yogas,
-        "remedies": remedies
+        "remedies": remedies,
+        "shadbala": strengths,
+        "muhurat": muhurat_result,
+        "deity": deity_info
     }
-
-    # ⏰ Daily Muhurat Summary
-    muhurat_result = find_muhurats(datetime_str, latitude, longitude, timezone_offset, muhurat_type)
-    muhurat_summary = muhurat_result.get("gpt_summary", "")
-
-    if muhurat_summary:
-        summary += f"\n\n🕐 **Today's Muhurat Recommendation**\n{muhurat_summary}"
-        context["muhurat"] = muhurat_result
 
     return {
         "summary": summary.strip(),
