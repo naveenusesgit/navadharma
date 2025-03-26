@@ -5,6 +5,7 @@ from utils.kundli import (
     get_lagna_info,
     get_dasha_periods,
     get_nakshatra_details,
+    get_planetary_aspects,
     get_transit_predictions,
     get_kundli_chart,
     generate_kundli_report_pdf,
