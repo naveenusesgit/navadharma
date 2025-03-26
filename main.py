@@ -14,6 +14,7 @@ from utils.kundli import (
 from utils.monthly_prediction import get_monthly_prediction
 from utils.weekly_prediction import get_weekly_prediction
 from utils.numerology import get_numerology
+from utils.interpretations import get_yogas  # ✅ Import yoga logic
 
 app = FastAPI()
 
@@ -86,7 +87,6 @@ def generate_full_prediction(req: KundliRequest):
     result = generate_full_kundli_prediction(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
     return {"full_prediction": result}
 
-# ✅ NEW endpoint for /generate-kundli
 @app.post("/generate-kundli")
 def generate_kundli(req: KundliRequest):
     result = generate_full_kundli_prediction(req.datetime, req.place, req.latitude, req.longitude, req.timezone)
@@ -106,3 +106,9 @@ def weekly_prediction(req: WeeklyRequest):
 def numerology(req: NumerologyRequest):
     result = get_numerology(req.name, req.dob)
     return {"numerology": result}
+
+# ✅ NEW Yogas + Dasha-Aware + Remedy-Powered Endpoint
+@app.post("/yogas")
+def yoga_interpretations(req: KundliRequest):
+    result = get_yogas(req.datetime, req.latitude, req.longitude, req.timezone)
+    return {"yogas": result}
