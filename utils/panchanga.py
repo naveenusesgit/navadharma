@@ -1,5 +1,3 @@
-# utils/panchanga.py
-
 import swisseph as swe
 from datetime import datetime, timedelta
 from timezonefinder import TimezoneFinder
@@ -34,27 +32,35 @@ YOGA_NAMES = [
 ]
 
 KARANA_NAMES = [
-    "Bava", "Balava", "Kaulava", "Taitila", "Garaja", "Vanija", "Vishti",  # repeating 8
-    "Shakuni", "Chatushpada", "Naga", "Kimstughna"  # fixed 4
+    "Bava", "Balava", "Kaulava", "Taitila", "Garaja", "Vanija", "Vishti",
+    "Shakuni", "Chatushpada", "Naga", "Kimstughna"
 ]
 
 WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
-# --- Core Panchanga Logic ---
+RAHU_KAAL_INDEX = {
+    "Sunday": 8, "Monday": 2, "Tuesday": 7, "Wednesday": 5,
+    "Thursday": 6, "Friday": 4, "Saturday": 3
+}
+
+# --- Main Panchanga Logic ---
 def get_panchanga(date_str, lat, lon, tz_offset):
     date = datetime.fromisoformat(date_str)
 
-    # Convert to UTC
+    # Timezone
     tz = timezone(get_timezone_name(lat, lon))
     local_dt = tz.localize(date)
     utc_dt = local_dt.astimezone(utc)
-    jd = swe.julday(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour + utc_dt.minute/60)
+    jd = swe.julday(utc_dt.year, utc_dt.month, utc_dt.day, utc_dt.hour + utc_dt.minute / 60)
 
-    # Sunrise and Sunset (approx)
-    sunrise_utc, _ = swe.rise_trans(jd, swe.SUN, lon, lat, rsmi=1)  # 1 = sunrise
-    sunset_utc, _ = swe.rise_trans(jd, swe.SUN, lon, lat, rsmi=2)   # 2 = sunset
+    # Sunrise & Sunset
+    sunrise_jd, _ = swe.rise_trans(jd, swe.SUN, lon, lat, rsmi=1)
+    sunset_jd, _ = swe.rise_trans(jd, swe.SUN, lon, lat, rsmi=2)
 
-    # Moon & Sun Longitudes
+    sunrise_dt = jd_to_datetime(sunrise_jd, tz)
+    sunset_dt = jd_to_datetime(sunset_jd, tz)
+
+    # Planetary Positions
     moon_long, _ = swe.calc_ut(jd, swe.MOON)
     sun_long, _ = swe.calc_ut(jd, swe.SUN)
 
@@ -73,32 +79,99 @@ def get_panchanga(date_str, lat, lon, tz_offset):
 
     # Karana
     karana_index = int((diff % 60) / 6)
-    if tithi_index == 14 or tithi_index == 29:
-        karana = KARANA_NAMES[karana_index + 7]
-    else:
-        karana = KARANA_NAMES[karana_index % 7]
+    karana = KARANA_NAMES[karana_index + 7] if tithi_index in [14, 29] else KARANA_NAMES[karana_index % 7]
 
-    # Final Panchanga
+    # Rahu Kaal
+    rahu_start, rahu_end = get_rahu_kaal(sunrise_dt, sunset_dt, WEEKDAYS[date.weekday()])
+
+    # Abhijit Muhurat
+    abhijit_start, abhijit_end = get_abhijit_muhurat(sunrise_dt, sunset_dt)
+
+    # Choghadiya
+    choghadiya = get_choghadiya(sunrise_dt, sunset_dt)
+
+    # Festivals
+    festivals = get_festivals(tithi, nakshatra, WEEKDAYS[date.weekday()], date)
+
     return {
         "date": date_str,
         "weekday": WEEKDAYS[date.weekday()],
-        "sunrise": jd_to_time(sunrise_utc, tz),
-        "sunset": jd_to_time(sunset_utc, tz),
+        "sunrise": sunrise_dt.strftime("%I:%M %p"),
+        "sunset": sunset_dt.strftime("%I:%M %p"),
         "tithi": tithi,
         "nakshatra": nakshatra,
         "yoga": yoga,
         "karana": karana,
+        "festivals": festivals,
+        "rahu_kaal": {
+            "start": rahu_start.strftime("%I:%M %p"),
+            "end": rahu_end.strftime("%I:%M %p")
+        },
+        "abhijit_muhurat": {
+            "start": abhijit_start.strftime("%I:%M %p") if abhijit_start else "N/A",
+            "end": abhijit_end.strftime("%I:%M %p") if abhijit_end else "N/A"
+        },
+        "choghadiya": choghadiya
     }
 
-# --- Helper Functions ---
-def jd_to_time(jd_val, tz):
-    if not jd_val:
-        return "N/A"
+# --- Helpers ---
+def jd_to_datetime(jd_val, tz):
     y, m, d, h = swe.revjul(jd_val)
     utc_dt = datetime(y, m, d) + timedelta(days=h)
-    local_dt = utc_dt.astimezone(tz)
-    return local_dt.strftime("%I:%M %p")
+    return utc_dt.replace(tzinfo=utc).astimezone(tz)
 
 def get_timezone_name(lat, lon):
     tf = TimezoneFinder()
     return tf.timezone_at(lat=lat, lng=lon) or "UTC"
+
+def get_rahu_kaal(sunrise, sunset, weekday):
+    index = RAHU_KAAL_INDEX[weekday]
+    total_seconds = (sunset - sunrise).total_seconds()
+    slot = total_seconds / 8
+    start = sunrise + timedelta(seconds=(index - 1) * slot)
+    end = start + timedelta(seconds=slot)
+    return start, end
+
+def get_abhijit_muhurat(sunrise, sunset):
+    """Approx. 24 mins before & after solar noon."""
+    duration = (sunset - sunrise)
+    solar_noon = sunrise + (duration / 2)
+    return solar_noon - timedelta(minutes=24), solar_noon + timedelta(minutes=24)
+
+def get_choghadiya(sunrise, sunset):
+    choghadiya = {"day": [], "night": []}
+
+    day_duration = (sunset - sunrise).total_seconds() / 8
+    for i in range(8):
+        start = sunrise + timedelta(seconds=i * day_duration)
+        end = start + timedelta(seconds=day_duration)
+        choghadiya["day"].append(f"{start.strftime('%I:%M %p')} - {end.strftime('%I:%M %p')}")
+
+    night_start = sunset
+    night_end = sunrise + timedelta(days=1)
+    night_duration = (night_end - night_start).total_seconds() / 8
+    for i in range(8):
+        start = night_start + timedelta(seconds=i * night_duration)
+        end = start + timedelta(seconds=night_duration)
+        choghadiya["night"].append(f"{start.strftime('%I:%M %p')} - {end.strftime('%I:%M %p')}")
+
+    return choghadiya
+
+def get_festivals(tithi, nakshatra, weekday, date):
+    mmdd = date.strftime("%m-%d")
+    festivals = []
+
+    fixed = {
+        "01-14": "Makar Sankranti",
+        "08-15": "Independence Day",
+        "10-02": "Gandhi Jayanti"
+    }
+    if mmdd in fixed:
+        festivals.append(fixed[mmdd])
+
+    if tithi == "Krishna Ashtami" and nakshatra == "Rohini":
+        festivals.append("Krishna Janmashtami")
+    if tithi == "Shukla Chaturdashi" and nakshatra == "Rohini":
+        festivals.append("Narasimha Jayanti")
+
+    return festivals
