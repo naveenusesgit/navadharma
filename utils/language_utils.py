@@ -1,6 +1,7 @@
 # utils/language_utils.py
 
 import os
+import logging
 
 try:
     from openai import OpenAI
@@ -9,7 +10,15 @@ try:
 except ImportError:
     client = None
 
-# Basic local dictionary for fast predefined translations (extend as needed)
+# Set up logging for errors
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Optional: File logging
+# handler = logging.FileHandler("translation_errors.log")
+# logger.addHandler(handler)
+
+# --- Local Phrase Dictionary ---
 TRANSLATION_DICT = {
     "en": {
         "Tithi": "Tithi",
@@ -20,6 +29,16 @@ TRANSLATION_DICT = {
         "Sunset": "Sunset",
         "Rahu Kaal": "Rahu Kaal",
         "Abhijit Muhurat": "Abhijit Muhurat",
+        "Moon Phase": "Moon Phase",
+        "Vedic Month": "Vedic Month",
+        "Choghadiya": "Choghadiya",
+        "Festivals": "Festivals",
+        "Ekadashi Vrat": "Ekadashi Vrat",
+        "Chaturthi Vrat": "Chaturthi Vrat",
+        "Amavasya": "Amavasya",
+        "Purnima": "Purnima",
+        "Sankashti": "Sankashti",
+        "Pradosham": "Pradosham",
     },
     "hi": {
         "Tithi": "तिथि",
@@ -30,6 +49,16 @@ TRANSLATION_DICT = {
         "Sunset": "सूर्यास्त",
         "Rahu Kaal": "राहु काल",
         "Abhijit Muhurat": "अभिजीत मुहूर्त",
+        "Moon Phase": "चंद्रमा की स्थिति",
+        "Vedic Month": "वैदिक महीना",
+        "Choghadiya": "चौघड़िया",
+        "Festivals": "त्योहार",
+        "Ekadashi Vrat": "एकादशी व्रत",
+        "Chaturthi Vrat": "चतुर्थी व्रत",
+        "Amavasya": "अमावस्या",
+        "Purnima": "पूर्णिमा",
+        "Sankashti": "संकष्टी",
+        "Pradosham": "प्रदोष व्रत",
     },
     "ta": {
         "Tithi": "திதி",
@@ -40,53 +69,49 @@ TRANSLATION_DICT = {
         "Sunset": "சூரிய அஸ்தமனம்",
         "Rahu Kaal": "ராகு காலம்",
         "Abhijit Muhurat": "அபிஜித் முஹூர்த்தம்",
+        "Moon Phase": "சந்திர நிலை",
+        "Vedic Month": "வேத மாதம்",
+        "Choghadiya": "சோகவாதியா",
+        "Festivals": "பண்டிகைகள்",
+        "Ekadashi Vrat": "ஏகாதசி விரதம்",
+        "Chaturthi Vrat": "சதுர்த்தி விரதம்",
+        "Amavasya": "அமாவாசை",
+        "Purnima": "பௌர்ணமி",
+        "Sankashti": "சங்கடஹர சதுர்த்தி",
+        "Pradosham": "பிரதோஷம்",
     },
-    "te": {
-        "Tithi": "తిథి",
-        "Nakshatra": "నక్షత్రం",
-        "Yoga": "యోగ",
-        "Karana": "కరణం",
-        "Sunrise": "సూర్యోదయం",
-        "Sunset": "సూర్యాస్తమయం",
-        "Rahu Kaal": "రాహు కాలం",
-        "Abhijit Muhurat": "అభిజిత్ ముహూర్తం",
-    },
-    "kn": {
-        "Tithi": "ತಿಥಿ",
-        "Nakshatra": "ನಕ್ಷತ್ರ",
-        "Yoga": "ಯೋಗ",
-        "Karana": "ಕರಣ",
-        "Sunrise": "ಸೂರ್ಯೋದಯ",
-        "Sunset": "ಸೂರ್ಯಾಸ್ತ",
-        "Rahu Kaal": "ರಾಹು ಕಾಲ",
-        "Abhijit Muhurat": "ಅಭಿಜಿತ್ ಮುಹೂರ್ತ",
-    }
+    # Add "te", "kn", "bn", "mr", etc. as needed
 }
 
-
+# --- Main Translation Function ---
 def translate_output(text: str, target_language: str = "en") -> str:
     """
-    Translate a given string to the target language using a predefined dictionary,
-    or fall back to OpenAI translation if available.
+    Translate a known or unknown phrase into the target language using
+    local dictionary or OpenAI API if enabled.
     """
-    # Try dictionary translation (for known phrases)
-    if target_language in TRANSLATION_DICT and text in TRANSLATION_DICT["en"]:
-        return TRANSLATION_DICT[target_language].get(text, text)
+    if not text or not isinstance(text, str):
+        return text
 
-    # Fallback: OpenAI translation if key & client is set
+    # Dictionary translation
+    if target_language in TRANSLATION_DICT:
+        base_dict = TRANSLATION_DICT.get("en", {})
+        if text in base_dict:
+            return TRANSLATION_DICT[target_language].get(text, text)
+
+    # OpenAI fallback
     if client:
         try:
             response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": f"Translate this to {target_language}"},
+                    {"role": "system", "content": f"Translate to {target_language}"},
                     {"role": "user", "content": text}
                 ]
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            print(f"[Translation Error] {e}")
+            logger.warning(f"OpenAI translation error for '{text}' → {target_language}: {e}")
             return text
 
-    # Final fallback - return original text
+    # Final fallback
     return text
