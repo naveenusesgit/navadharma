@@ -1,47 +1,33 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from utils.kundli import *
+from typing import Optional
+from utils.kundli import generate_kundli_chart
 
-app = FastAPI(title="Navadharma Jyotish API", version="2.0")
+app = FastAPI(title="Navadharma Jyotish API", version="1.0.0")
 
+# 📦 Input schema
 class KundliRequest(BaseModel):
-    datetime: str
+    datetime: str  # ISO format e.g. "1990-07-16T04:30:00"
     latitude: float
     longitude: float
-    timezone: float
+    timezone: Optional[float] = 5.5  # default IST
+    place: Optional[str] = "India"
 
-@app.post("/get-kundli-chart")
-def get_kundli(req: KundliRequest):
-    return generate_kundli_chart(req.datetime, req.latitude, req.longitude, req.timezone)
-
-@app.post("/planet-positions")
-def get_positions(req: KundliRequest):
-    return {"planet_positions": get_planet_positions(req.datetime, req.latitude, req.longitude, req.timezone)}
-
-@app.post("/nakshatra-details")
-def nakshatra(req: KundliRequest):
-    pos = get_planet_positions(req.datetime, req.latitude, req.longitude, req.timezone)
-    return get_nakshatra_and_pada(pos["Moon"])
-
-@app.post("/dasha-periods")
-def dashas(req: KundliRequest):
-    return {"dashas": get_dasha_periods(req.datetime, req.timezone)}
-
-@app.post("/remedies")
-def remedies(req: KundliRequest):
-    chart = generate_kundli_chart(req.datetime, req.latitude, req.longitude, req.timezone)
-    return get_remedies(chart["planet_positions"], chart["ascendant"]["lagna_sign"])
-
-@app.post("/transits")
-def transits(req: KundliRequest):
-    natal = get_planet_positions(req.datetime, req.latitude, req.longitude, req.timezone)
-    return analyze_transits(natal)
-
-@app.post("/generate-summary")
-def summary(req: KundliRequest):
-    chart = generate_kundli_chart(req.datetime, req.latitude, req.longitude, req.timezone)
-    return generate_summary(chart)
-
+# ✅ Root health check
 @app.get("/")
 def root():
-    return {"message": "🌐🕉️ Navadharma Jyotish API is Live!"}
+    return {"message": "🕉️ Navadharma Jyotish API is online."}
+
+# ✅ Basic health check endpoint
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+# 🧠 Generate Kundli chart using Swiss Ephemeris + KP Ayanamsa
+@app.post("/generate-kundli-chart")
+def generate_kundli(req: KundliRequest):
+    try:
+        result = generate_kundli_chart(req.dict())
+        return {"kundli_chart": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kundli generation error: {str(e)}")
