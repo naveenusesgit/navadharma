@@ -1,6 +1,4 @@
 from .kundli import (
-    get_planet_positions,
-    get_transit_predictions,
     get_kundli_chart,
 )
 
