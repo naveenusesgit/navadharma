@@ -1,33 +1,24 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 from utils.kundli import generate_kundli_chart
 
-app = FastAPI(title="Navadharma Jyotish API", version="1.0.0")
+app = FastAPI(title="Navadharma Jyotish API")
 
-# 📦 Input schema
 class KundliRequest(BaseModel):
-    datetime: str  # ISO format e.g. "1990-07-16T04:30:00"
-    latitude: float
-    longitude: float
-    timezone: Optional[float] = 5.5  # default IST
-    place: Optional[str] = "India"
+    name: str
+    birth_date: str  # Format: YYYY-MM-DD
+    birth_time: str  # Format: HH:MM (24hr)
+    place: str       # City name or location string
 
-# ✅ Root health check
-@app.get("/")
-def root():
-    return {"message": "🕉️ Navadharma Jyotish API is online."}
-
-# ✅ Basic health check endpoint
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
-
-# 🧠 Generate Kundli chart using Swiss Ephemeris + KP Ayanamsa
-@app.post("/generate-kundli-chart")
-def generate_kundli(req: KundliRequest):
+@app.post("/get-kundli-chart")
+def get_kundli_chart(req: KundliRequest):
     try:
-        result = generate_kundli_chart(req.dict())
-        return {"kundli_chart": result}
+        result = generate_kundli_chart(
+            name=req.name,
+            birth_date=req.birth_date,
+            birth_time=req.birth_time,
+            place=req.place
+        )
+        return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Kundli generation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
