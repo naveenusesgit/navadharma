@@ -1,182 +1,84 @@
-import re
-import hashlib
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List, Dict
+from flatlib.chart import Chart
+from flatlib.datetime import Datetime
+from flatlib.geopos import GeoPos
+from flatlib import const
+from flatlib.astro import moon
+import math
 
-router = APIRouter()
 
-class RemediesRequest(BaseModel):
-    planetaryStatus: Dict[str, List[str]]
-    houseMapping: Dict[str, str]
-    lang: str = "en"
+def get_chart(datetime_str, latitude, longitude, tz_offset):
+    """Create a Flatlib chart with Lahiri Ayanamsa"""
+    date, time = datetime_str.split('T')
+    chart_datetime = Datetime(date, time, tz_offset)
+    pos = GeoPos(str(latitude), str(longitude))
+    chart = Chart(chart_datetime, pos, IDs=const.LAHIRI)
+    return chart
 
-class RemediesResponse(BaseModel):
-    spiritual: List[str]
-    mantra: List[str]
-    donation: List[str]
 
-@router.post("/remedies", response_model=RemediesResponse)
-def get_remedies(req: RemediesRequest):
-    planetary_status = req.planetaryStatus
-    house_mapping = req.houseMapping
-    lang = req.lang
+def get_planet_positions(datetime_str, latitude, longitude, tz_offset):
+    chart = get_chart(datetime_str, latitude, longitude, tz_offset)
+    planet_data = {}
 
-    spiritual = []
-    mantras = []
-    donations = []
-
-    for planet, afflictions in planetary_status.items():
-        if afflictions:
-            if planet == "Saturn":
-                spiritual.append("Practice patience and seva (selfless service)")
-                mantras.append("Om Sham Shanicharaya Namah")
-                donations.append("Donate black sesame or black clothes on Saturdays")
-
-            elif planet == "Mars":
-                spiritual.append("Engage in discipline and physical fitness")
-                mantras.append("Om Mangalaya Namah")
-                donations.append("Donate red lentils or jaggery")
-
-            elif planet == "Rahu":
-                spiritual.append("Practice detachment and meditation")
-                mantras.append("Om Raam Rahave Namah")
-                donations.append("Feed lepers or donate dark blue clothes")
-
-            elif planet == "Ketu":
-                spiritual.append("Detox and engage in spiritual practices")
-                mantras.append("Om Ketave Namah")
-                donations.append("Feed dogs or donate blankets")
-
-            elif planet == "Venus":
-                spiritual.append("Balance desires and cultivate artistic expression")
-                mantras.append("Om Shum Shukraya Namah")
-                donations.append("Donate white rice or curd")
-
-    # House-based remedies
-    if house_mapping.get("6") in ["Saturn", "Rahu"]:
-        donations.append("Donate medicines or volunteer at hospitals")
-
-    if house_mapping.get("8") in ["Ketu", "Mars"]:
-        spiritual.append("Practice pranayama and introspection")
-
-    return {
-        "spiritual": list(set(spiritual)),
-        "mantra": list(set(mantras)),
-        "donation": list(set(donations))
-    }
-
-def get_yogas(datetime_str, latitude, longitude, timezone_offset):
-    jd, _ = parse_datetime(datetime_str, timezone_offset)
-    positions = {name: swe.calc_ut(jd, pid)[0] for name, pid in PLANET_IDS.items()}
-    lagna = swe.houses(jd, latitude, longitude.encode(), b'P')[1][0]
-    sun = positions["Sun"]
-    moon = positions["Moon"]
-    jupiter = positions["Jupiter"]
-
-    yogas = []
-
-    # Sample yoga rules
-    if 0 <= abs(sun - moon) <= 12:
-        yogas.append({
-            "name": "Amavasya Yoga",
-            "summary": "Sun and Moon are close together (new moon)",
-            "active": True,
-            "score": 8.5
-        })
-
-    if 180 <= abs(jupiter - moon) <= 200:
-        yogas.append({
-            "name": "Gajakesari Yoga",
-            "summary": "Moon and Jupiter in Kendra from each other",
-            "active": True,
-            "score": 9.2
-        })
-
-    return {
-        "yogas": yogas
-    }
-
-def get_generate_summary(datetime_str, latitude, longitude, timezone_offset, lang="en", goal="spiritual"):
-    nakshatra_data = get_nakshatra_details(datetime_str, latitude, longitude, timezone_offset)
-    dasha_data = get_dasha_periods(datetime_str, latitude, longitude, timezone_offset)
-
-    gpt_prompt = (
-        f"User is born under Nakshatra {nakshatra_data['nakshatra']} (Pada {nakshatra_data['padam']}), "
-        f"and current Mahadasha is {dasha_data['dashas'][0]['mahadasha']}. "
-        f"Goal: {goal}. Provide insights and guidance."
-    )
-
-    return {
-        "summary": f"Nakshatra: {nakshatra_data['nakshatra']}, Dasha: {dasha_data['dashas'][0]['mahadasha']}",
-        "gpt_prompt": gpt_prompt,
-        "dasha_score": 8.0,
-        "context": {
-            "nakshatra": nakshatra_data['nakshatra'],
-            "padam": nakshatra_data['padam'],
-            "mahadasha": dasha_data['dashas'][0]['mahadasha']
+    for body in const.LIST_OBJECTS:
+        obj = chart.get(body)
+        planet_data[body] = {
+            'sign': obj.sign,
+            'lon': round(obj.lon, 2),
+            'deg': obj.signlon,
+            'speed': obj.speed,
+            'house': obj.house
         }
+
+    return planet_data
+
+
+def get_ascendant_info(datetime_str, latitude, longitude, tz_offset):
+    chart = get_chart(datetime_str, latitude, longitude, tz_offset)
+    asc = chart.get(const.ASC)
+    return {
+        'sign': asc.sign,
+        'degree': asc.signlon
     }
 
-def get_numerology(name, dob_str):
-    # Calculate basic numbers
-    digits = [int(d) for d in re.sub(r'\D', '', dob_str)]
-    birth_number = sum(digits[:2]) if len(digits) >= 2 else sum(digits)
-    life_path = sum(digits)
-    while life_path > 9:
-        life_path = sum([int(x) for x in str(life_path)])
 
-    # Name hashing as pseudo numeric encoding
-    name_hash = int(hashlib.md5(name.encode()).hexdigest(), 16)
-    lucky = name_hash % 9 + 1
+def get_house_mapping(datetime_str, latitude, longitude, tz_offset):
+    chart = get_chart(datetime_str, latitude, longitude, tz_offset)
+    house_list = []
 
-    return {
-        "life_path_number": life_path,
-        "birth_number": birth_number,
-        "numerology_message": f"Name vibration aligns with lucky number {lucky}. Life path is {life_path}."
-    }
+    for i in range(1, 13):
+        house = chart.houses.get(str(i))
+        planets = chart.houses.planets_in_house(str(i))
+        house_list.append({
+            'house': i,
+            'sign': house.sign,
+            'degree': house.signlon,
+            'planets': planets
+        })
 
-def get_remedies(planetary_status: dict, house_mapping: dict, lang: str = "en"):
-    spiritual = []
-    mantras = []
-    donations = []
+    return house_list
 
-    for planet, afflictions in planetary_status.items():
-        if afflictions:
-            if planet == "Saturn":
-                spiritual.append("Practice patience and seva (selfless service)")
-                mantras.append("Om Sham Shanicharaya Namah")
-                donations.append("Donate black sesame or black clothes on Saturdays")
 
-            elif planet == "Mars":
-                spiritual.append("Engage in discipline and physical fitness")
-                mantras.append("Om Mangalaya Namah")
-                donations.append("Donate red lentils or jaggery")
+def get_moon_info(datetime_str, latitude, longitude, tz_offset):
+    """Return moon-based info like Rasi (sign), Nakshatra, and Pada"""
+    chart = get_chart(datetime_str, latitude, longitude, tz_offset)
+    moon_obj = chart.get(const.MOON)
+    moon_sign = moon_obj.sign
+    nakshatra_deg = moon_obj.lon % 360
 
-            elif planet == "Rahu":
-                spiritual.append("Practice detachment and meditation")
-                mantras.append("Om Raam Rahave Namah")
-                donations.append("Feed lepers or donate dark blue clothes")
+    nakshatras = [
+        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu",
+        "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta",
+        "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha", "Mula", "Purva Ashadha",
+        "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha", "Purva Bhadrapada",
+        "Uttara Bhadrapada", "Revati"
+    ]
 
-            elif planet == "Ketu":
-                spiritual.append("Detox and engage in spiritual practices")
-                mantras.append("Om Ketave Namah")
-                donations.append("Feed dogs or donate blankets")
-
-            elif planet == "Venus":
-                spiritual.append("Balance desires and cultivate artistic expression")
-                mantras.append("Om Shum Shukraya Namah")
-                donations.append("Donate white rice or curd")
-
-    # Sample house-based suggestions
-    if house_mapping.get("6") in ["Saturn", "Rahu"]:
-        donations.append("Donate medicines or volunteer at hospitals")
-
-    if house_mapping.get("8") in ["Ketu", "Mars"]:
-        spiritual.append("Practice pranayama and introspection")
+    index = int(nakshatra_deg // (360 / 27))
+    nakshatra = nakshatras[index]
+    pada = int((nakshatra_deg % (360 / 27)) // (360 / 108)) + 1
 
     return {
-        "spiritual": list(set(spiritual)),
-        "mantra": list(set(mantras)),
-        "donation": list(set(donations))
+        'moon_sign': moon_sign,
+        'nakshatra': nakshatra,
+        'padam': pada
     }
