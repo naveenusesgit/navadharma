@@ -1,78 +1,75 @@
-from flatlib.chart import Chart
-from flatlib.datetime import Datetime
-from flatlib.geopos import GeoPos
-from flatlib import const
+import swisseph as swe
+from datetime import datetime
+from typing import Dict, Any, List
 
-from typing import Dict, Any
-import math
+swe.set_ephe_path('.')
+swe.set_ayanamsa_mode(swe.AYANAMSA_KRISHNAMURTI)  # KP Ayanamsa
 
-# Define list of planets (as flatlib has no PLANETS constant)
 PLANETS = [
-    const.SUN, const.MOON, const.MERCURY, const.VENUS,
-    const.MARS, const.JUPITER, const.SATURN,
-    const.NORTH_NODE, const.SOUTH_NODE
+    swe.SUN, swe.MOON, swe.MERCURY, swe.VENUS, swe.MARS,
+    swe.JUPITER, swe.SATURN, swe.URANUS, swe.NEPTUNE, swe.PLUTO,
+    swe.MEAN_NODE  # Rahu
+]
+
+NAKSHATRAS = [
+    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu", "Pushya", "Ashlesha",
+    "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha",
+    "Jyeshtha", "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
+    "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
 ]
 
 
-def get_kundli_details(datetime_str: str, latitude: float, longitude: float, timezone: float) -> Dict[str, Any]:
-    dt = Datetime(datetime_str, tz=timezone)
-    pos = GeoPos(latitude, longitude)
-    chart = Chart(dt, pos, hsys=const.HOUSES_WHOLE_SIGN)
+def get_planet_positions(dt_str: str, lat: float, lon: float, tz: float) -> Dict[str, Any]:
+    utc_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+    jd = swe.julday(utc_dt.year, utc_dt.month, utc_dt.day,
+                    utc_dt.hour + utc_dt.minute / 60 + utc_dt.second / 3600 - tz)
 
-    kundli = {}
+    positions = {}
+    for p in PLANETS:
+        lon_deg, _ = swe.calc_ut(jd, p)[0:2]
+        planet_name = swe.get_planet_name(p)
+        positions[planet_name] = round(lon_deg % 360, 4)
+    return positions
 
-    # Ascendant (Lagna)
-    asc = chart.get(const.ASC)
-    kundli["ascendant"] = {
-        "sign": asc.sign,
-        "degree": round(asc.lon, 2)
+
+def get_nakshatra_and_pada(moon_longitude: float) -> Dict[str, Any]:
+    nak_idx = int(moon_longitude // (360 / 27))
+    pada = int((moon_longitude % (360 / 27)) // (360 / 108)) + 1
+    return {
+        "nakshatra": NAKSHATRAS[nak_idx],
+        "padam": str(pada)
     }
 
-    # Moon Rasi and Nakshatra
-    moon = chart.get(const.MOON)
-    kundli["moon"] = {
-        "sign": moon.sign,
-        "degree": round(moon.lon, 2),
-        "nakshatra": get_nakshatra(moon.lon),
-        "padam": get_padam(moon.lon)
+
+def get_lagna(jd: float, lat: float, lon: float) -> Dict[str, Any]:
+    asc = swe.houses_ex(jd, lat, lon, b'A')[0][0]  # Ascendant degree
+    return {
+        "lagna_degree": round(asc, 2),
+        "lagna_sign": get_zodiac_sign(asc)
     }
 
-    # All planetary positions
-    kundli["planet_positions"] = {}
-    for planet in PLANETS:
-        obj = chart.get(planet)
-        kundli["planet_positions"][planet] = {
-            "sign": obj.sign,
-            "degree": round(obj.lon, 2),
-            "house": obj.house
-        }
 
-    # House mapping
-    kundli["houses"] = []
-    for i in range(1, 13):
-        house = chart.houses[i - 1]
-        kundli["houses"].append({
-            "house": i,
-            "sign": house.sign,
-            "start_degree": round(house.start, 2)
-        })
-
-    return kundli
-
-
-# Nakshatra Calculation (27 divisions of 13°20')
-def get_nakshatra(moon_longitude: float) -> str:
-    nakshatras = [
-        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu", "Pushya", "Ashlesha",
-        "Magha", "Purva Phalguni", "Uttara Phalguni", "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha",
-        "Jyeshtha", "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
-        "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
+def get_zodiac_sign(lon_deg: float) -> str:
+    signs = [
+        "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+        "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
     ]
-    index = int(moon_longitude // (13 + 1 / 3)) % 27
-    return nakshatras[index]
+    index = int((lon_deg % 360) // 30)
+    return signs[index]
 
 
-# Pada Calculation (Each Nakshatra has 4 padas of 3°20')
-def get_padam(moon_longitude: float) -> str:
-    pada_num = int((moon_longitude % (13 + 1 / 3)) // (3 + 1 / 3)) + 1
-    return str(pada_num)
+def generate_kundli_chart(dt_str: str, lat: float, lon: float, tz: float) -> Dict[str, Any]:
+    utc_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+    jd = swe.julday(utc_dt.year, utc_dt.month, utc_dt.day,
+                    utc_dt.hour + utc_dt.minute / 60 + utc_dt.second / 3600 - tz)
+
+    asc_data = get_lagna(jd, lat, lon)
+    planet_pos = get_planet_positions(dt_str, lat, lon, tz)
+    moon_lon = planet_pos.get("Moon", 0)
+    nak_pada = get_nakshatra_and_pada(moon_lon)
+
+    return {
+        "ascendant": asc_data,
+        "planet_positions": planet_pos,
+        "nakshatra_details": nak_pada
+    }
