@@ -23,8 +23,14 @@ from utils.models import (
     WeeklyRequest,
     NumerologyRequest,
 )
+from kundli import router as kundli_router
+app = FastAPI(
+    title="Navadharma Jyotish API",
+    description="Full-scale Vedic astrology service API",
+    version="1.0.0"
+)
 
-app = FastAPI(title="Navadharma Jyotish API")
+app.include_router(kundli_router)
 
 # --- Core Endpoints ---
 
