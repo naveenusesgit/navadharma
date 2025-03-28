@@ -1,5 +1,3 @@
-# utils/kundli.py
-
 import swisseph as swe
 import datetime
 from timezonefinder import TimezoneFinder
