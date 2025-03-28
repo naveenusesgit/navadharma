@@ -192,3 +192,94 @@ def get_planetary_strength(datetime_str, latitude, longitude, timezone_offset):
             "house": house
         }
     return {"strengths": results}
+
+def get_yogas(datetime_str, latitude, longitude, timezone_offset):
+    jd, _ = parse_datetime(datetime_str, timezone_offset)
+    planets = {}
+    for name, pid in PLANET_IDS.items():
+        lon, _ = swe.calc_ut(jd, pid)
+        planets[name] = lon
+
+    yogas = []
+
+    # Example: Chandra-Mangal Yoga (Moon + Mars)
+    if 0 < abs(planets["Moon"] - planets["Mars"]) < 30:
+        yogas.append({
+            "name": "Chandra-Mangal Yoga",
+            "summary": "Moon and Mars are close, indicating business acumen and energy.",
+            "active": True,
+            "score": 8.5
+        })
+
+    # Example: Gajakesari Yoga (Moon + Jupiter in Kendra)
+    moon_sign = int(planets["Moon"] // 30)
+    jupiter_sign = int(planets["Jupiter"] // 30)
+    if abs(moon_sign - jupiter_sign) in [0, 3, 6, 9]:
+        yogas.append({
+            "name": "Gajakesari Yoga",
+            "summary": "Moon and Jupiter in Kendra creates wisdom and intelligence.",
+            "active": True,
+            "score": 9.0
+        })
+
+    return {
+        "yogas": yogas
+    }
+
+def get_remedies(data):
+    # Expects dict input: planetaryStatus, houseMapping, lang
+    lang = data.get("lang", "en")
+    planetary_status = data.get("planetaryStatus", {})
+    house_mapping = data.get("houseMapping", {})
+
+    spiritual = []
+    mantras = []
+    donations = []
+
+    if "Saturn" in planetary_status and "afflicted" in planetary_status["Saturn"]:
+        spiritual.append("Visit Hanuman temple on Saturdays")
+        mantras.append("Om Sham Shanicharaya Namah")
+        donations.append("Donate black sesame seeds")
+
+    if house_mapping.get("8") == "Mars":
+        spiritual.append("Perform Mangal Shanti Puja")
+        mantras.append("Om Mangalaya Namah")
+        donations.append("Donate red lentils on Tuesdays")
+
+    return {
+        "spiritual": spiritual,
+        "mantra": mantras,
+        "donation": donations
+    }
+
+def get_transits(datetime_str, latitude, longitude, timezone_offset):
+    jd_now, _ = parse_datetime(datetime_str, timezone_offset)
+    # natal positions from birth chart (reuse `get_planet_positions`)
+    natal = get_planet_positions(datetime_str, latitude, longitude, timezone_offset)["planet_positions"]
+
+    # current transit positions
+    swe.set_topo(longitude, latitude, 0)
+    transit = {}
+    for name, pid in PLANET_IDS.items():
+        lon, _ = swe.calc_ut(jd_now, pid)
+        transit[name] = f"{lon:.2f}°"
+
+    predictions = []
+    remedies = []
+
+    # Simple example rule: Saturn transit over natal Moon
+    natal_moon = float(natal["Moon"].replace("°", ""))
+    saturn_transit = float(transit["Saturn"].replace("°", ""))
+
+    if abs(saturn_transit - natal_moon) < 15:
+        predictions.append("You are under Sade Sati. Emotional turbulence possible.")
+        remedies.append("Chant Hanuman Chalisa on Saturdays.")
+
+    return {
+        "natal_positions": natal,
+        "transit_positions": transit,
+        "house_transits": {},  # Can be added using `swe.houses`
+        "predictions": predictions,
+        "remedies": remedies,
+        "gpt_summary": "Sade Sati is active. Emotional introspection and discipline are advised."
+    }
