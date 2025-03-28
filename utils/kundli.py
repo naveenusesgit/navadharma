@@ -1,104 +1,91 @@
 import swisseph as swe
-import math
 from datetime import datetime
+from timezonefinder import TimezoneFinder
+from geopy.geocoders import Nominatim
 import pytz
+import math
 
-# Set path to ephemeris data (adjust as needed or use default)
-swe.set_ephe_path(".")
-swe.set_ayanamsa(swe.AYAN_KRISHNAMURTI)  # ✅ Set KP Ayanamsa
+# Set KP (Krishnamurti) Ayanamsa
+swe.set_ephe_path('.')  # or set to the path containing ephemeris files if needed
+swe.set_ayanamsa(3)     # 3 = KP Ayanamsa
 
-ZODIAC_SIGNS = [
-    "Mesha", "Vrishabha", "Mithuna", "Karka", "Simha", "Kanya",
-    "Tula", "Vrischika", "Dhanu", "Makara", "Kumbha", "Meena"
-]
-
+# Nakshatras mapping
 NAKSHATRAS = [
-    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha", "Ardra",
-    "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
-    "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
-    "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta",
-    "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
+    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha",
+    "Ardra", "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni",
+    "Uttara Phalguni", "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha",
+    "Jyeshtha", "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana",
+    "Dhanishta", "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
 ]
 
-def get_julian_day(dt: datetime) -> float:
-    utc_dt = dt.astimezone(pytz.utc)
-    return swe.julday(
-        utc_dt.year, utc_dt.month, utc_dt.day,
-        utc_dt.hour + utc_dt.minute / 60 + utc_dt.second / 3600
-    )
+def get_timezone(lat, lon, date_time):
+    tf = TimezoneFinder()
+    tz_str = tf.timezone_at(lat=lat, lng=lon)
+    tz = pytz.timezone(tz_str)
+    return tz
 
-def normalize_angle(degree):
-    return degree % 360
+def to_julian_day(dt_utc):
+    return swe.julday(dt_utc.year, dt_utc.month, dt_utc.day, 
+                      dt_utc.hour + dt_utc.minute / 60 + dt_utc.second / 3600)
 
-def get_rasi(degree):
-    return ZODIAC_SIGNS[int(degree // 30)]
+def get_ascendant(jd, lat, lon):
+    """Calculate Lagna (Ascendant) using Swiss Ephemeris house cusp."""
+    cusps, ascmc = swe.houses_ex(jd, lat, lon, b'A', flag=swe.FLG_SIDEREAL)
+    asc_deg = ascmc[0]
+    sign = int(asc_deg // 30) + 1
+    return {"ascendant_degree": asc_deg, "ascendant_sign": sign}
 
-def get_nakshatra_info(moon_longitude):
-    nak_index = int(moon_longitude // (360 / 27))
-    pada = int((moon_longitude % (360 / 27)) // (3.3333)) + 1
+def get_rasi_and_nakshatra(jd, lat, lon):
+    """Calculate Moon's Rasi and Nakshatra"""
+    moon_pos, _ = swe.calc_ut(jd, swe.MOON, flag=swe.FLG_SIDEREAL)
+    moon_long = moon_pos[0]
+    rasi = int(moon_long // 30) + 1
+
+    nakshatra_index = int(moon_long / (360 / 27))
+    pada = int(((moon_long % (360 / 27)) / (360 / 108)) + 1)
+
+    nakshatra_name = NAKSHATRAS[nakshatra_index]
     return {
-        "nakshatra": NAKSHATRAS[nak_index],
-        "pada": f"Pada {pada}"
+        "moon_longitude": moon_long,
+        "rasi": rasi,
+        "nakshatra": nakshatra_name,
+        "pada": pada
     }
 
-def get_lagna(jd, latitude, longitude):
-    asc = swe.houses_ex(jd, latitude, longitude, b'A')[0][0]
-    return {
-        "lagna_degree": round(asc, 4),
-        "lagna_rasi": get_rasi(asc)
-    }
+def generate_kundli_chart(name, birth_date, birth_time, place):
+    # Combine date and time
+    birth_dt_str = f"{birth_date} {birth_time}"
+    birth_dt = datetime.strptime(birth_dt_str, "%Y-%m-%d %H:%M")
 
-def get_planet_positions(jd):
-    planets = [
-        swe.SUN, swe.MOON, swe.MERCURY, swe.VENUS, swe.MARS,
-        swe.JUPITER, swe.SATURN, swe.TRUE_NODE  # Rahu
-    ]
-    planet_names = [
-        "Sun", "Moon", "Mercury", "Venus", "Mars",
-        "Jupiter", "Saturn", "Rahu"
-    ]
+    # Resolve coordinates
+    geolocator = Nominatim(user_agent="kundli_generator")
+    location = geolocator.geocode(place)
+    if not location:
+        raise ValueError(f"Could not find coordinates for {place}")
+    lat, lon = location.latitude, location.longitude
 
-    positions = {}
-    for idx, planet in enumerate(planets):
-        lon, _ = swe.calc_ut(jd, planet)[0:2]
-        lon = normalize_angle(lon)
-        positions[planet_names[idx]] = {
-            "degree": round(lon, 4),
-            "rasi": get_rasi(lon)
-        }
-    return positions
+    # Get timezone and convert to UTC
+    tz = get_timezone(lat, lon, birth_dt)
+    birth_dt_local = tz.localize(birth_dt)
+    birth_dt_utc = birth_dt_local.astimezone(pytz.utc)
 
-def generate_kundli_chart(data):
-    """
-    data: {
-        "datetime": "YYYY-MM-DDTHH:MM:SS",
-        "latitude": float,
-        "longitude": float,
-        "timezone": float
-    }
-    """
-    dt = datetime.fromisoformat(data["datetime"])
-    jd = get_julian_day(dt)
+    # Julian Day
+    jd = to_julian_day(birth_dt_utc)
 
-    latitude = data["latitude"]
-    longitude = data["longitude"]
-
-    # Lagna
-    lagna_data = get_lagna(jd, latitude, longitude)
-
-    # Moon
-    moon_long = swe.calc_ut(jd, swe.MOON)[0]
-    moon_long = normalize_angle(moon_long)
-    nak_info = get_nakshatra_info(moon_long)
-
-    # Planetary positions
-    planets = get_planet_positions(jd)
+    # Calculate core chart data
+    asc = get_ascendant(jd, lat, lon)
+    moon_data = get_rasi_and_nakshatra(jd, lat, lon)
 
     return {
-        "datetime": dt.isoformat(),
-        "lagna": lagna_data["lagna_rasi"],
-        "lagna_degree": lagna_data["lagna_degree"],
-        "nakshatra": nak_info["nakshatra"],
-        "pada": nak_info["pada"],
-        "planet_positions": planets
+        "name": name,
+        "birth_details": {
+            "date": birth_date,
+            "time": birth_time,
+            "place": place,
+            "latitude": lat,
+            "longitude": lon,
+            "timezone": str(tz)
+        },
+        "lagna": asc,
+        "moon": moon_data
     }
