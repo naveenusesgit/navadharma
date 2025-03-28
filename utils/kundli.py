@@ -1,5 +1,70 @@
 import re
 import hashlib
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict
+
+router = APIRouter()
+
+class RemediesRequest(BaseModel):
+    planetaryStatus: Dict[str, List[str]]
+    houseMapping: Dict[str, str]
+    lang: str = "en"
+
+class RemediesResponse(BaseModel):
+    spiritual: List[str]
+    mantra: List[str]
+    donation: List[str]
+
+@router.post("/remedies", response_model=RemediesResponse)
+def get_remedies(req: RemediesRequest):
+    planetary_status = req.planetaryStatus
+    house_mapping = req.houseMapping
+    lang = req.lang
+
+    spiritual = []
+    mantras = []
+    donations = []
+
+    for planet, afflictions in planetary_status.items():
+        if afflictions:
+            if planet == "Saturn":
+                spiritual.append("Practice patience and seva (selfless service)")
+                mantras.append("Om Sham Shanicharaya Namah")
+                donations.append("Donate black sesame or black clothes on Saturdays")
+
+            elif planet == "Mars":
+                spiritual.append("Engage in discipline and physical fitness")
+                mantras.append("Om Mangalaya Namah")
+                donations.append("Donate red lentils or jaggery")
+
+            elif planet == "Rahu":
+                spiritual.append("Practice detachment and meditation")
+                mantras.append("Om Raam Rahave Namah")
+                donations.append("Feed lepers or donate dark blue clothes")
+
+            elif planet == "Ketu":
+                spiritual.append("Detox and engage in spiritual practices")
+                mantras.append("Om Ketave Namah")
+                donations.append("Feed dogs or donate blankets")
+
+            elif planet == "Venus":
+                spiritual.append("Balance desires and cultivate artistic expression")
+                mantras.append("Om Shum Shukraya Namah")
+                donations.append("Donate white rice or curd")
+
+    # House-based remedies
+    if house_mapping.get("6") in ["Saturn", "Rahu"]:
+        donations.append("Donate medicines or volunteer at hospitals")
+
+    if house_mapping.get("8") in ["Ketu", "Mars"]:
+        spiritual.append("Practice pranayama and introspection")
+
+    return {
+        "spiritual": list(set(spiritual)),
+        "mantra": list(set(mantras)),
+        "donation": list(set(donations))
+    }
 
 def get_yogas(datetime_str, latitude, longitude, timezone_offset):
     jd, _ = parse_datetime(datetime_str, timezone_offset)
