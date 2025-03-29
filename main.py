@@ -1,7 +1,7 @@
 # main.py
 
 from fastapi import FastAPI, Query
-from utils.kundli import generate_kundli_chart, get_lagna_info
+from utils.kundli import generate_kundli_chart
 from utils.full_kundli_prediction import generate_full_kundli_prediction
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -45,7 +45,7 @@ def get_kundli_chart(
     """
     return generate_kundli_chart(name, date, time, place)
 
-# === 🛠️ Stub for future endpoints ===
+# === 🛠️ Stubs for upcoming features ===
 
 @app.get("/planet-positions")
 def get_planet_positions_stub():
