@@ -1,4 +1,4 @@
-from .kundli import generate_kundli_chart, get_dasha_periods
+from .kundli import generate_kundli_chart
 import re
 
 EXALTED_SIGNS = {
