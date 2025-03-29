@@ -1,10 +1,7 @@
 from .kundli import (
-    get_kundli_chart,
+    generate_kundli_chart,
+    get_lagna_info,
 )
-
-# ❌ Exclude get_lagna_info if it's no longer in kundli.py or causes import errors
-# ✅ If it's back later, you can uncomment this safely
-# from .kundli import get_lagna_info
 
 from .monthly_prediction import get_monthly_prediction
 from .weekly_prediction import get_weekly_prediction
@@ -15,6 +12,6 @@ from .muhurat_finder import find_muhurats
 from .pdf_utils import generate_kundli_report_pdf
 
 # ✅ NOTE: generate_full_kundli_prediction comes from a separate module
-# So it should NOT be imported from kundli.py anymore
-# You should import it explicitly in main.py like:
+# So it should NOT be imported from kundli.py
+# Use this in main.py directly:
 # from utils.full_kundli_prediction import generate_full_kundli_prediction
