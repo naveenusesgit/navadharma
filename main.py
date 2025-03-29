@@ -1,7 +1,8 @@
 # main.py
 
 from fastapi import FastAPI, Query
-from utils.kundli import generate_kundli_chart
+from utils.kundli import generate_kundli_chart, get_lagna_info
+from utils.full_kundli_prediction import generate_full_kundli_prediction
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
