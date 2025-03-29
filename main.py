@@ -16,8 +16,10 @@ def get_kundli(
     hour: int = Query(12, description="Hour of birth (24h)"),
     minute: int = Query(0, description="Minute of birth"),
     latitude: float = Query(..., description="Latitude of birth"),
-    longitude: float = Query(..., description="Longitude of birth")
+    longitude: float = Query(..., description="Longitude of birth"),
+    tz: float = Query(5.5, description="Timezone offset from UTC"),
+    system: str = Query("vedic", enum=["vedic", "kp"], description="Astrological system: vedic or kp")
 ):
     jd = swe.julday(year, month, day, hour + (minute / 60.0))
-    chart = generate_kundli_chart(jd, latitude, longitude)
+    chart = generate_kundli_chart(jd, latitude, longitude, tz, system)
     return chart
