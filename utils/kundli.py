@@ -1,13 +1,12 @@
 import swisseph as swe
-from datetime import datetime
-from timezonefinder import TimezoneFinder
-import pytz
+from datetime import datetime, timedelta
 
-# Set ephemeris path (update as needed)
+# KP Ayanamsa offset in degrees for 1987; refine if needed per year
+KP_AYANAMSA_OFFSET = 23.856
+
+# Set the ephemeris path and KP ayanamsa
 swe.set_ephe_path('/usr/share/ephe')
-
-# Use KP Ayanamsa
-swe.set_sid_mode(swe.SIDM_USER, 0, 23.85675)  # True KP value
+swe.set_sid_mode(swe.SIDM_USER, 0, KP_AYANAMSA_OFFSET)
 
 PLANETS = {
     'Sun': swe.SUN,
@@ -29,78 +28,61 @@ NAKSHATRAS = [
     "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
 ]
 
-def get_timezone_offset(lat, lon, year, month, day, hour, minute):
-    tf = TimezoneFinder()
-    tz_str = tf.timezone_at(lng=lon, lat=lat)
-    tz = pytz.timezone(tz_str)
-    dt = datetime(year, month, day, hour, minute)
-    offset_sec = tz.utcoffset(dt).total_seconds()
-    return offset_sec / 3600.0
+def compute_julian_day(year, month, day, hour, minute, tz_offset):
+    dt_local = datetime(year, month, day, hour, minute)
+    dt_utc = dt_local - timedelta(hours=tz_offset)
+    return swe.julday(dt_utc.year, dt_utc.month, dt_utc.day,
+                      dt_utc.hour + dt_utc.minute / 60.0)
 
 def get_planet_positions(jd):
     positions = {}
     for name, pid in PLANETS.items():
         lon, _, _ = swe.calc_ut(jd, pid)
-        positions[name] = round(lon, 4)
+        positions[name] = round(lon % 360, 4)
     return positions
 
-def get_house_cusps(jd, lat, lon):
-    cusps, ascmc = swe.houses(jd, lat, lon, b'P')
-    houses = {f'House_{i+1}': round(cusp, 4) for i, cusp in enumerate(cusps)}
-    houses['Ascendant'] = round(ascmc[0], 4)
-    return houses
+def get_lagna(jd, latitude, longitude):
+    _, ascmc = swe.houses(jd, latitude, longitude, b'P')
+    return round(ascmc[0] % 360, 4)
 
-def get_nakshatra_info(moon_long):
-    segment = 13.333333
-    idx = int(moon_long // segment)
-    pada = int((moon_long % segment) // (segment / 4)) + 1
+def get_nakshatra_and_pada(moon_long):
+    seg = 13.333333
+    moon_long %= 360
+    nak_index = int(moon_long // seg)
+    pada = int((moon_long % seg) // (seg / 4)) + 1
     return {
-        "nakshatra": NAKSHATRAS[idx],
+        "nakshatra": NAKSHATRAS[nak_index],
         "pada": pada
     }
 
-def get_sub_lords(jd):
-    sequence = ['Ketu', 'Venus', 'Sun', 'Moon', 'Mars', 'Rahu', 'Jupiter', 'Saturn', 'Mercury']
-    years = [7, 20, 6, 10, 7, 18, 16, 19, 17]
-    spans = [(p, 360 * y / 120) for p, y in zip(sequence, years)]
+def get_house_cusps(jd, latitude, longitude):
+    cusps, _ = swe.houses(jd, latitude, longitude, b'P')
+    return {f"House_{i+1}": round(cusp, 4) for i, cusp in enumerate(cusps)}
 
-    sublords = {}
-    for name, pid in PLANETS.items():
-        lon, _, _ = swe.calc_ut(jd, pid)
-        deg = lon % 360
-        for i, (_, span) in enumerate(spans):
-            deg -= span
-            if deg <= 0:
-                sublords[name] = sequence[i]
-                break
-    return sublords
-
-def generate_kundli_chart(year, month, day, hour, minute, lat, lon):
-    tz = get_timezone_offset(lat, lon, year, month, day, hour, minute)
-    local_time = hour + (minute / 60)
-    utc_time = local_time - tz
-    jd = swe.julday(year, month, day, utc_time)
-
-    positions = get_planet_positions(jd)
-    moon_long = positions["Moon"]
-    chart = {
-        "ascendant": get_house_cusps(jd, lat, lon)["Ascendant"],
-        "planet_positions": positions,
-        "nakshatra": get_nakshatra_info(moon_long),
-        "house_cusps": get_house_cusps(jd, lat, lon),
-        "sub_lords": get_sub_lords(jd),
-    }
+def generate_kundli_chart(jd, latitude, longitude, tz=5.5):
+    planet_positions = get_planet_positions(jd)
+    lagna = get_lagna(jd, latitude, longitude)
+    moon_long = planet_positions["Moon"]
+    nak_details = get_nakshatra_and_pada(moon_long)
+    house_cusps = get_house_cusps(jd, latitude, longitude)
+    ayanamsa = swe.get_ayanamsa_ut(jd)
 
     return {
-        "chart": chart,
+        "chart": {
+            "planet_positions": planet_positions,
+            "ascendant": lagna,
+            "nakshatra_details": nak_details,
+            "house_cusps": house_cusps
+        },
         "meta": {
+            "system": "kp",
             "julian_day": jd,
-            "ayanamsa": round(swe.get_ayanamsa(jd), 6),
+            "ayanamsa": round(ayanamsa, 6),
             "location": {
-                "latitude": lat,
-                "longitude": lon,
-                "timezone": tz
+                "latitude": latitude,
+                "longitude": longitude
             },
+            "timezone": tz,
             "generated_at": datetime.utcnow().isoformat()
         }
     }
