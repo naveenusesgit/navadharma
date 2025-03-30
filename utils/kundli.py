@@ -1,8 +1,11 @@
 import swisseph as swe
 from datetime import datetime
 
-# Set ephemeris path
-swe.set_ephe_path('/usr/share/ephe')  # Optional
+# Set ephemeris path (optional)
+swe.set_ephe_path('/usr/share/ephe')
+
+# Set KP Ayanamsa permanently
+swe.set_sid_mode(swe.SIDM_USER, 0, 23.85675)  # KP Ayanamsa
 
 PLANETS = {
     'Sun': swe.SUN,
@@ -27,7 +30,7 @@ NAKSHATRAS = [
 def get_ayanamsa(jd):
     return swe.get_ayanamsa(jd)
 
-def get_planet_positions(jd, latitude, longitude):
+def get_planet_positions(jd):
     positions = {}
     for name, pid in PLANETS.items():
         lon, lat, dist = swe.calc_ut(jd, pid)[0]
@@ -35,21 +38,26 @@ def get_planet_positions(jd, latitude, longitude):
     return positions
 
 def get_house_cusps(jd, latitude, longitude):
-    cusps, ascmc = swe.houses(jd, latitude, longitude, b'P')  # Placidus for KP
+    cusps, ascmc = swe.houses(jd, latitude, longitude, b'P')  # Placidus
     return {
-        f"House_{i+1}": round(cusp, 4) for i, cusp in enumerate(cusps)
-    }, round(ascmc[0], 4)  # ascendant degree
+        f"House_{i+1}": round(cusp, 4)
+        for i, cusp in enumerate(cusps)
+    } | {"Ascendant": round(ascmc[0], 4)}
 
-def get_nakshatra_and_pada(moon_longitude):
+def get_lagna(jd, latitude, longitude):
+    _, ascmc = swe.houses(jd, latitude, longitude, b'P')
+    return round(ascmc[0], 4)
+
+def get_nakshatra_and_pada(moon_lon):
     segment = 13.333333
-    nak_index = int(moon_longitude // segment)
-    pada = int((moon_longitude % segment) // (segment / 4)) + 1
+    nak_index = int((moon_lon % 360) // segment)
+    pada = int(((moon_lon % segment) / (segment / 4))) + 1
     return {
         "nakshatra": NAKSHATRAS[nak_index],
         "pada": pada
     }
 
-def get_sub_lords(jd, system='vedic'):
+def get_sub_lords(jd):
     sublords = {}
     dasha_years = {
         'Ketu': 7, 'Venus': 20, 'Sun': 6, 'Moon': 10,
@@ -61,48 +69,34 @@ def get_sub_lords(jd, system='vedic'):
     sublord_degrees = [(lord, (dasha_years[lord] / 120) * total_span) for lord in dasha_lords]
 
     for name, pid in PLANETS.items():
-        lon = swe.calc_ut(jd, pid)[0][0]
-        if system.lower() == "kp":
-            lon -= get_ayanamsa(jd)
-        deg = lon % 360
+        lon = swe.calc_ut(jd, pid)[0][0] % 360
+        pos = lon
         idx = 0
-        pos = deg
         while pos > sublord_degrees[idx][1]:
             pos -= sublord_degrees[idx][1]
             idx = (idx + 1) % len(sublord_degrees)
         sublords[name] = sublord_degrees[idx][0]
-
     return sublords
 
-def generate_kundli_chart(jd, latitude, longitude, tz=5.5, system="vedic"):
-    # 🔁 Use correct Ayanamsa based on system
-    if system.lower() == "kp":
-        swe.set_sid_mode(swe.SIDM_KRISHNAMURTI)
-    else:
-        swe.set_sid_mode(swe.SIDM_LAHIRI)
+def generate_kundli_chart(year, month, day, hour, minute, second, latitude, longitude, tz=5.5):
+    local_time = hour + (minute / 60) + (second / 3600)
+    utc_hour = local_time - tz
+    jd = swe.julday(year, month, day, utc_hour)
 
-    planet_positions = get_planet_positions(jd, latitude, longitude)
-    moon_long = planet_positions.get("Moon", 0.0)
-    nakshatra = get_nakshatra_and_pada(moon_long)
-
+    planet_positions = get_planet_positions(jd)
+    moon_lon = planet_positions["Moon"]
     chart = {
         "planet_positions": planet_positions,
-        "nakshatra_details": nakshatra
+        "ascendant": get_lagna(jd, latitude, longitude),
+        "nakshatra_details": get_nakshatra_and_pada(moon_lon),
+        "house_cusps": get_house_cusps(jd, latitude, longitude),
+        "sub_lords": get_sub_lords(jd)
     }
-
-    if system.lower() == "kp":
-        house_cusps, asc = get_house_cusps(jd, latitude, longitude)
-        chart["house_cusps"] = house_cusps
-        chart["ascendant"] = asc
-        chart["sub_lords"] = get_sub_lords(jd, system)
-    else:
-        _, asc = get_house_cusps(jd, latitude, longitude)
-        chart["ascendant"] = asc
 
     return {
         "chart": chart,
         "meta": {
-            "system": system,
+            "system": "kp",
             "julian_day": jd,
             "location": {
                 "latitude": latitude,
@@ -110,8 +104,6 @@ def generate_kundli_chart(jd, latitude, longitude, tz=5.5, system="vedic"):
             },
             "timezone": tz,
             "ayanamsa": round(get_ayanamsa(jd), 6),
-            "moon_degree": round(moon_long, 4),
-            "ascendant_degree": chart["ascendant"],
             "generated_at": datetime.utcnow().isoformat()
         }
     }
