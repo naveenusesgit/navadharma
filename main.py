@@ -1,16 +1,11 @@
 from fastapi import FastAPI, Query
-from utils.kundli import generate_kundli_chart
-import swisseph as swe
+from utils.kundli import generate_kundli_chart, compute_julian_day
 
-app = FastAPI(
-    title="Navadharma KP API",
-    description="Accurate KP astrology chart generator with Sub Lords, Nakshatras, and House Cusps.",
-    version="1.0.0"
-)
+app = FastAPI()
 
 @app.get("/")
 def root():
-    return {"message": "Navadharma KP API is live 🎉"}
+    return {"message": "Navadharma KP API is live 🎯"}
 
 @app.get("/kundli")
 def get_kundli(
@@ -20,9 +15,8 @@ def get_kundli(
     hour: int = Query(..., description="Hour of birth (24h format)"),
     minute: int = Query(0, description="Minute of birth"),
     latitude: float = Query(..., description="Latitude of birthplace"),
-    longitude: float = Query(..., description="Longitude of birthplace")
+    longitude: float = Query(..., description="Longitude of birthplace"),
+    tz: float = Query(5.5, description="Timezone offset from UTC (e.g., 5.5 for IST)")
 ):
-    """
-    Generate an accurate KP-based Kundli chart using Swiss Ephemeris.
-    """
-    return generate_kundli_chart(year, month, day, hour, minute, latitude, longitude)
+    jd = compute_julian_day(year, month, day, hour, minute, tz)
+    return generate_kundli_chart(jd, latitude, longitude, tz)
